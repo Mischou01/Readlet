@@ -59,7 +59,8 @@ export default defineConfig({
     chunkSizeWarningLimit: 2048,
   },
   test: {
-    environment: 'jsdom',
+    // Pure logic by default; a test that needs a DOM opts in with `// @vitest-environment jsdom`.
+    environment: 'node',
     include: ['src/**/*.test.{ts,tsx}'],
     restoreMocks: true,
   },

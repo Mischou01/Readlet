@@ -75,3 +75,18 @@ export function useDebouncedCallback<A extends unknown[]>(
   useEffect(() => debounced.cancel, [debounced])
   return debounced
 }
+
+/** An element's content width, kept up to date with a ResizeObserver; 0 until measured. */
+export function useElementWidth<T extends HTMLElement>(): [(element: T | null) => void, number] {
+  const [width, setWidth] = useState(0)
+  const [element, setElement] = useState<T | null>(null)
+  useEffect(() => {
+    if (!element) return
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) setWidth(Math.floor(entry.contentRect.width))
+    })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [element])
+  return [setElement, width]
+}

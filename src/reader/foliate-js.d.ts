@@ -141,6 +141,8 @@ declare module 'foliate-js/view.js' {
       matchCase?: boolean
       matchDiacritics?: boolean
       matchWholeWords?: boolean
+      /** Options for the overlay that outlines matches, e.g. `{ color }`. */
+      drawOptions?: Record<string, unknown>
     }): AsyncGenerator<SearchResult>
     clearSearch(): void
     initTTS(granularity?: 'word' | 'sentence', highlight?: (range: Range) => void): Promise<void>

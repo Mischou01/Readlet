@@ -13,6 +13,7 @@ import {
   type View,
   createView,
 } from './foliate'
+import { chapterLabel } from './toc'
 
 export interface SelectionInfo {
   cfi: string
@@ -44,8 +45,8 @@ export interface BookViewHandle {
   goRight(): void
   goTo(target: string | number): Promise<void>
   goToFraction(fraction: number): Promise<void>
-  /** Streams search results; call the returned function to stop. */
-  search(query: string, onResult: (result: SearchResult) => void): () => void
+  /** Streams search results, outlining matches in `color`; call the returned function to stop. */
+  search(query: string, color: string, onResult: (result: SearchResult) => void): () => void
   clearSearch(): void
   deselect(): void
   sectionFractions(): number[]
@@ -131,14 +132,23 @@ export function BookView(props: BookViewProps) {
       goToFraction: async (fraction) => {
         await viewRef.current?.goToFraction(fraction)
       },
-      search: (query, onResult) => {
+      search: (query, color, onResult) => {
         const view = viewRef.current
         let stopped = false
         if (view) {
           void (async () => {
-            for await (const result of view.search({ query })) {
+            for await (const result of view.search({ query, drawOptions: { color } })) {
               if (stopped) break
-              onResult(result)
+              // Name result groups the way the toolbar names chapters ("Book I · Chapter IV").
+              const first = typeof result === 'object' && 'subitems' in result && result.subitems[0]
+              if (first) {
+                const item = await view.getTOCItemOf(first.cfi)
+                if (stopped) break
+                onResult({
+                  ...result,
+                  label: chapterLabel(view.book.toc ?? [], item) ?? result.label,
+                })
+              } else onResult(result)
             }
           })().catch((e) => console.warn('search failed', e))
         }

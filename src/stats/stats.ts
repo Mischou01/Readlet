@@ -127,8 +127,13 @@ export function favouriteTimeOfDay(sessions: readonly Session[]): TimeOfDay | nu
     total += s.activeMs
   }
   if (total < 30 * 60_000) return null
-  const [best, ms] = Object.entries(buckets).sort((a, b) => b[1] - a[1])[0] as [TimeOfDay, number]
-  return ms / total >= 0.45 ? best : null
+  const [first, second] = Object.entries(buckets).sort((a, b) => b[1] - a[1]) as [
+    TimeOfDay,
+    number,
+  ][]
+  // A favourite needs most of the reading time, and no tie.
+  if (!first || first[1] / total < 0.5 || first[1] === second?.[1]) return null
+  return first[0]
 }
 
 /** The book read the most on a given day (used to tint that day's pebble). */
@@ -143,4 +148,80 @@ export function mainBookOf(total: DayTotal | undefined): string | null {
     }
   }
   return best
+}
+
+// -- The stats page ----------------------------------------------------------------------------
+
+export interface CalendarDay {
+  date: Date
+  key: string
+  minutes: number
+  /** The book read most that day. */
+  book: string | null
+  today: boolean
+  future: boolean
+}
+
+export interface YearCalendar {
+  /** Columns of seven days, Monday first; `null` pads the first and last weeks. */
+  weeks: (CalendarDay | null)[][]
+  /** The column each month starts in. */
+  months: { month: number; column: number }[]
+}
+
+/** Every day of `year` laid out in week columns, as on the stats page's pebble calendar. */
+export function yearCalendar(
+  totals: Map<string, DayTotal>,
+  year: number,
+  today: Date,
+): YearCalendar {
+  const first = new Date(year, 0, 1)
+  const offset = (first.getDay() + 6) % 7
+  const cells: (CalendarDay | null)[] = Array.from({ length: offset }, () => null)
+  const months: YearCalendar['months'] = []
+  const todayKey = dayKey(today.getTime())
+  for (let date = first; date.getFullYear() === year; date = addDays(date, 1)) {
+    if (date.getDate() === 1) {
+      months.push({ month: date.getMonth(), column: Math.floor(cells.length / 7) })
+    }
+    const key = dayKey(date.getTime())
+    const total = totals.get(key)
+    cells.push({
+      date,
+      key,
+      minutes: total?.minutes ?? 0,
+      book: mainBookOf(total),
+      today: key === todayKey,
+      future: key > todayKey,
+    })
+  }
+  while (cells.length % 7) cells.push(null)
+  const weeks: (CalendarDay | null)[][] = []
+  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7))
+  return { weeks, months }
+}
+
+export interface BookShare {
+  /** A fingerprint, or `null` for the remaining books together. */
+  book: string | null
+  minutes: number
+}
+
+/** The `limit` most-read books, then everything else as one entry. */
+export function topBooks(sessions: readonly Session[], limit: number): BookShare[] {
+  const sorted = [...minutesPerBook(sessions)]
+    .filter(([, minutes]) => minutes > 0)
+    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
+  const top: BookShare[] = sorted.slice(0, limit).map(([book, minutes]) => ({ book, minutes }))
+  const rest = sorted.slice(limit).reduce((sum, [, minutes]) => sum + minutes, 0)
+  return rest > 0 ? [...top, { book: null, minutes: rest }] : top
+}
+
+/** Days that count as read in `year`. */
+export function readingDays(totals: Map<string, DayTotal>, year: number): number {
+  let days = 0
+  for (const [key, total] of totals) {
+    if (key.startsWith(`${year}-`) && total.minutes >= STREAK_MINUTES) days += 1
+  }
+  return days
 }

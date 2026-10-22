@@ -53,6 +53,7 @@ import { SearchSheet } from './SearchSheet'
 import { TextSettingsSheet } from './TextSettingsSheet'
 import { readerChromeVars, resolveReadingTheme } from './themes'
 import { useReadAloud } from './useReadAloud'
+import { chapterLabel } from './toc'
 import { useReadingSession } from './useReadingSession'
 
 /** foliate-js estimates "time left" at this many bytes a minute; we rescale to the reader's pace. */
@@ -109,6 +110,8 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
   const windowWidth = useWindowWidth()
 
   const [open, setOpen] = useState<OpenState>({ status: 'loading' })
+  /** The open book's TOC, for naming chapters in event handlers. */
+  const tocRef = useRef<TocItem[]>([])
   const [ready, setReady] = useState(false)
   const [location, setLocation] = useState<Location | null>(null)
   const [chromeVisible, setChromeVisible] = useState(true)
@@ -161,7 +164,10 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
       const file = await fetchBookFile(current)
       book = await loadBook(file)
       if (cancelled) book.destroy?.()
-      else setOpen({ status: 'ready', book })
+      else {
+        tocRef.current = book.toc ?? []
+        setOpen({ status: 'ready', book })
+      }
     })().catch((e: unknown) => {
       if (cancelled) return
       const message =
@@ -214,7 +220,7 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
   const onRelocate = useCallback(
     (loc: Location) => {
       setLocation(loc)
-      const label = loc.tocItem?.label?.trim() || undefined
+      const label = chapterLabel(tocRef.current, loc.tocItem)
       if (loc.cfi) {
         pendingProgress.current = { cfi: loc.cfi, fraction: loc.fraction, label }
         saveProgressSoon()
@@ -336,7 +342,7 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
         text: sel.text,
         color,
         note,
-        chapter: location?.tocItem?.label?.trim() || undefined,
+        chapter: chapterLabel(tocRef.current, location?.tocItem),
         fraction: location?.fraction,
       })
       putRecord(updated)
@@ -427,7 +433,7 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
         kind: 'bookmark',
         cfi: collapseCFI(location.cfi),
         text,
-        chapter: location.tocItem?.label?.trim() || undefined,
+        chapter: chapterLabel(tocRef.current, location.tocItem),
         fraction: location.fraction,
       }),
     )
@@ -577,13 +583,13 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
     )
   }
 
-  const chapter = location?.tocItem?.label?.trim()
+  const toc: TocItem[] = open.status === 'ready' ? (open.book.toc ?? []) : []
+  const chapter = chapterLabel(toc, location?.tocItem)
   const minutesLeft = location?.time
     ? (location.time.section * FOLIATE_BYTES_PER_MINUTE) / bytesPerMinute
     : null
   const canDefine =
     !!selection && selection.text.split(/\s+/).length <= 3 && selection.text.length <= 60
-  const toc: TocItem[] = open.status === 'ready' ? (open.book.toc ?? []) : []
 
   return (
     <div
@@ -700,7 +706,7 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
         {sheet === 'search' && (
           <SearchSheet
             key="search"
-            search={(q, onResult) => handle.current?.search(q, onResult) ?? (() => {})}
+            search={(q, onResult) => handle.current?.search(q, accent, onResult) ?? (() => {})}
             onGoTo={goTo}
             onClose={() => {
               handle.current?.clearSearch()

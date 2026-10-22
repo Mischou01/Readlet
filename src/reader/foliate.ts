@@ -13,6 +13,7 @@ import { Overlayer } from 'foliate-js/overlayer.js'
 import { collapse as collapseCFI, compare as compareCFI } from 'foliate-js/epubcfi.js'
 import { FootnoteHandler } from 'foliate-js/footnotes.js'
 import { htmlToText, guessFromFileName } from '../lib/text'
+import { injectCsp } from './csp'
 import type { BookEntry, BookFormat, BookMetadata } from '../lib/types'
 import { bookUrl } from '../lib/urls'
 
@@ -55,23 +56,6 @@ export async function fetchBookFile(
   return new File([blob], base + EXTENSIONS[entry.format], { type: blob.type })
 }
 
-/**
- * A Content Security Policy for every page of a book. Books can contain scripts, forms and
- * frames; Readlet never runs or loads them (foliate-js requires this; see its README). The app's
- * own CSP already blocks scripts in production; this also covers development builds.
- */
-const BOOK_CSP =
-  "script-src 'none'; object-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'"
-
-/** Inserts the CSP `<meta>` at the start of an (X)HTML document's head. */
-export function injectCsp(markup: string): string {
-  const meta = `<meta http-equiv="Content-Security-Policy" content="${BOOK_CSP}"/>`
-  if (/<head\b[^>]*>/i.test(markup)) return markup.replace(/<head\b[^>]*>/i, (head) => head + meta)
-  if (/<html\b[^>]*>/i.test(markup))
-    return markup.replace(/<html\b[^>]*>/i, (html) => `${html}<head>${meta}</head>`)
-  return meta + markup
-}
-
 function harden(book: Book) {
   const target = book.transformTarget
   if (!target) return
@@ -82,7 +66,7 @@ function harden(book: Book) {
     const { detail } = e
     if (!/html/i.test(detail.type)) return
     detail.data = Promise.resolve(detail.data).then((data) =>
-      typeof data === 'string' ? injectCsp(data) : data,
+      typeof data === 'string' ? injectCsp(data, location.origin) : data,
     )
   }) as EventListener)
 }

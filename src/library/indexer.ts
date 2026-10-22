@@ -94,10 +94,11 @@ export async function indexPendingBooks() {
       ? { total: state.total + fresh.length }
       : { running: true, done: 0, total: fresh.length },
   )
-  while (active < CONCURRENCY) {
-    active += 1
-    void worker()
-  }
+  // Count the workers before starting them: a worker that finds the queue empty finishes
+  // synchronously, so a loop on `active` alone could start and finish workers forever.
+  const workers = Math.min(CONCURRENCY - active, queue.length)
+  active += Math.max(0, workers)
+  for (let i = 0; i < workers; i++) void worker()
 }
 
 /** Drops pending work, e.g. when the library folder changes. */

@@ -1,0 +1,443 @@
+/* The stats page (the "Stats" mockup). */
+
+.page {
+  position: relative;
+  height: 100%;
+  overflow: hidden auto;
+  background: var(--fog);
+}
+
+.main {
+  position: relative;
+  z-index: 1;
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 40px 56px 80px;
+}
+
+/* -- Summary ----------------------------------------------------------------------------------- */
+
+.summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 48px;
+}
+
+.summaryText {
+  flex: 1 1 560px;
+  min-width: 0;
+  max-width: 760px;
+}
+
+.eyebrow {
+  margin-bottom: 14px;
+  font-size: 15px;
+  font-weight: 550;
+  color: var(--haze);
+}
+
+.headline {
+  font-family: var(--font-reading);
+  font-size: clamp(30px, 3vw, 40px);
+  line-height: 1.22;
+  font-weight: 450;
+  letter-spacing: -0.015em;
+  text-wrap: pretty;
+}
+
+.figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 40px;
+  margin-top: 34px;
+}
+
+.figureValue {
+  height: 28px;
+  font-size: 24px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.figureLabel {
+  margin-top: 6px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.figureHint {
+  font-size: 13.5px;
+  color: var(--haze);
+}
+
+.pebbleRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+}
+
+.pebble {
+  width: 12px;
+  height: 14px;
+  border-radius: 46% 54% 50% 50% / 52% 48% 52% 48%;
+  background: var(--accent);
+}
+
+.pebble[data-off] {
+  background: var(--track);
+}
+
+.ring {
+  position: relative;
+  flex: none;
+  width: 220px;
+  height: 220px;
+}
+
+.ringFill {
+  transition:
+    stroke-dasharray 800ms var(--ease-out),
+    stroke 1.2s var(--ease-out);
+}
+
+.ringText {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.ringValue {
+  font-family: var(--font-reading);
+  font-size: 52px;
+  line-height: 1;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.ringLabel {
+  margin-top: 6px;
+  font-size: 14px;
+  color: var(--haze);
+}
+
+.ringButton {
+  margin-top: 8px;
+  height: 32px;
+  padding: 0 12px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--glass-strong);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ringButton:hover {
+  box-shadow: var(--pill-shadow);
+}
+
+/* -- Sections ---------------------------------------------------------------------------------- */
+
+.sectionHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.sectionTitle {
+  font-size: 20px;
+  font-weight: 650;
+}
+
+.sectionHint {
+  margin-top: 6px;
+  font-size: 14px;
+  color: var(--haze);
+}
+
+.year {
+  margin-top: 72px;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 240px;
+  height: 40px;
+  padding: 0 14px 0 12px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--glass-edge);
+  background: var(--glass);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.legendItem[aria-checked='true'] {
+  border-color: var(--line);
+  background: var(--glass-strong);
+  font-weight: 650;
+}
+
+.legendPebble {
+  flex: none;
+  width: 12px;
+  height: 13px;
+  border-radius: 46% 54% 50% 50% / 52% 48% 52% 48%;
+}
+
+.legendName {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.calendarScroll {
+  overflow-x: auto;
+  margin-top: 22px;
+  padding-bottom: 6px;
+}
+
+.calendar {
+  position: relative;
+  display: flex;
+  gap: 2px;
+  width: max-content;
+  padding: 26px 0 0 40px;
+}
+
+.month {
+  position: absolute;
+  top: 0;
+  font-size: 12.5px;
+  color: var(--haze);
+}
+
+.weekday {
+  position: absolute;
+  left: 0;
+  font-size: 12px;
+  color: var(--haze);
+}
+
+.week {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--cell, 22px);
+  height: var(--cell, 22px);
+}
+
+.dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--ink) 22%, transparent);
+}
+
+.dot[data-future] {
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
+}
+
+.dayPebble {
+  transition: background-color 400ms var(--ease-out);
+}
+
+.dayPebble[data-muted] {
+  background: color-mix(in srgb, var(--haze) 38%, transparent);
+}
+
+.columns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 72px;
+  margin-top: 64px;
+}
+
+.column {
+  flex: 1 1 420px;
+  min-width: 0;
+}
+
+/* -- This week --------------------------------------------------------------------------------- */
+
+.weekChart {
+  position: relative;
+  height: 200px;
+  margin-top: 28px;
+}
+
+.goalLine {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1.5px dashed color-mix(in srgb, var(--ink) 30%, transparent);
+}
+
+.goalLine span {
+  position: absolute;
+  right: 0;
+  bottom: 6px;
+  font-size: 12.5px;
+  color: var(--haze);
+}
+
+.baseline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 24px;
+  border-top: 1px solid var(--line);
+}
+
+.bars {
+  position: absolute;
+  inset: 0 120px 0 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.barColumn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  width: 44px;
+  height: 100%;
+}
+
+.barValue {
+  margin-bottom: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.bar {
+  width: 28px;
+  border-radius: 4px 4px 0 0;
+  background: color-mix(in srgb, var(--haze) 80%, transparent);
+  transition: height 600ms var(--ease-out);
+}
+
+.bar[data-today] {
+  background: var(--accent);
+}
+
+.barDay {
+  height: 24px;
+  line-height: 24px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--haze);
+}
+
+.barDay[data-today] {
+  font-weight: 650;
+  color: var(--ink);
+}
+
+/* -- Time with each book ----------------------------------------------------------------------- */
+
+.bookList {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 26px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bookRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.bookRow > :first-child {
+  flex: none;
+}
+
+.otherCover {
+  width: 24px;
+  height: 36px;
+  border-radius: 3px;
+  background: linear-gradient(135deg, var(--track), var(--line));
+}
+
+.bookName {
+  flex: none;
+  width: 170px;
+  font-size: 14.5px;
+  font-weight: 550;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bookTrack {
+  flex: 1;
+  height: 10px;
+  border-radius: var(--radius-pill);
+  background: var(--track);
+}
+
+.bookTrack span {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-pill);
+  transition: width 600ms var(--ease-out);
+}
+
+.bookTime {
+  flex: none;
+  width: 72px;
+  text-align: right;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  color: var(--haze);
+}
+
+.nothing {
+  margin-top: 26px;
+  font-size: 15px;
+  color: var(--haze);
+}
+
+@media (max-width: 760px) {
+  .main {
+    padding: 24px 20px 64px;
+  }
+
+  .bookName {
+    width: 110px;
+  }
+}
