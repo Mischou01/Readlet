@@ -10,23 +10,50 @@ This is the living plan. Update **Status** and the **Decisions log** whenever ei
 
 | Milestone | State |
 | --- | --- |
-| Planning | **done** (2026-10-22): this file. Waiting on open questions 1–2 and a yes on §5 |
-| M0 Scaffold | not started |
-| M1 Library | not started |
-| M2 Reader | not started |
-| M3 Annotations | not started |
-| M4 Highlights hub | not started |
-| M5 Stats & goals | not started |
-| M6 Read-aloud | not started |
-| M7 Polish & ship | not started |
+| Planning | **done** (2026-10-22) |
+| M0 Scaffold | **done** |
+| M1 Library | **done** |
+| M2 Reader | **done** |
+| M3 Annotations | **done** (Wiktionary only; offline StarDict dictionaries not started) |
+| M4 Highlights hub | **done** |
+| M5 Stats & goals | **done** |
+| M6 Read-aloud | **speech-dispatcher done**; Piper voices and the download manager not started |
+| M7 Polish & ship | **mostly done**: open-book transition, reduce transparency, onboarding and empty states, PDF (experimental), app icon, RPM and DEB. AppImage and Windows builds not started |
+
+Checked in the running app (headless X11 on Linux, WebKitGTK 2.52):
+
+- Library: indexing, the aura and the hero, the DRM notice, and drag and drop
+- Reader: page turns, the toolbar, contents, search, text settings, themes and the open-book
+  transition
+- Annotations: highlights, notes and bookmarks, written to disk
+- The highlights hub, including going back to a passage
+- Stats, and saving goals
+- Read-aloud with sentence sync through to the next chapter
+- Book security, with an adversarial EPUB: scripts, inline handlers, forms, frames and remote
+  images are all blocked
+
+Automated: 87 Rust tests (fingerprints, scanning and watching, the index, the store and its merge
+rules, `book://`, the SSIP client, the aura, covers, settings and command validation) and 40 Vitest tests
+(library model, highlights and Markdown export, stats, resurfacing, TOC labels, CSP, formatting).
+CI runs both on every push.
+
+Not yet measured against the milestone criteria:
+
+- M1: a 500-book folder indexing in under 2 minutes. Only an 11-book folder has been tried.
+- M2/M3: reading on a second machine through a synced folder. The merge rules are unit-tested.
+- M5: minutes shown against a stopwatch-timed session.
+- M6: a full chapter with real audio output. It was tested against a null audio device.
 
 ## Next session (start here)
 
-1. Install Tauri's build dependencies (needs sudo):
-   `sudo dnf install webkit2gtk4.1-devel openssl-devel curl wget file libappindicator-gtk3-devel librsvg2-devel libxdo-devel`
-   and `sudo dnf group install c-development`. Rust 1.99, bun 1.3 and node 22 are already installed.
-2. Answer open questions 1 and 2 (§10).
-3. Start M0.
+1. Try a real install on Fedora (`bun tauri build`, then install the RPM) and run through the
+   unchecked criteria above.
+2. Piper voices (open question 3), then offline dictionaries.
+3. AppImage and Windows builds; re-anchoring highlights when a book is replaced by a new edition.
+
+Known issue: when the reader closes, foliate-js's paginator can run a queued `requestAnimationFrame`
+or `fonts.ready` callback after the view is destroyed. This logs a harmless `doc.documentElement`
+TypeError. It's in the pinned vendor code, so it's left there rather than patched locally.
 
 ## 1. Goals and non-goals
 
@@ -58,7 +85,7 @@ Non-goals:
 | Watching | notify + notify-debouncer-full | |
 | Book identity | BLAKE3 over sampled chunks + file size | Survives renames and moves; fast on large files |
 | Read-aloud | Rust: speech-dispatcher first, Piper neural voices next | WebKitGTK's `speechSynthesis` needs libspiel, which isn't installed here and has an open sandbox bug ([WebKit #280684](https://bugs.webkit.org/show_bug.cgi?id=280684)) |
-| Audio | rodio | |
+| Audio | Speech Dispatcher's output for now; rodio when Piper arrives (D16) | |
 
 ## 3. Architecture
 
@@ -289,16 +316,23 @@ rules and session accounting; Vitest covers the UI logic. Test books come from S
 | D8 | Metadata parsed by foliate-js in the webview and cached by Rust | 2026-10-22 |
 | D9 | `book://` protocol serving indexed files, instead of an asset-protocol folder scope | 2026-10-22 |
 | D10 | A per-book aura is the only colour source in the chrome (§5) | 2026-10-22 |
+| D11 | Reading data lives in the book folder (`.readlet/`), so it syncs with the books | User, 2026-10-22 |
+| D12 | License: GPL-3.0-or-later | User, 2026-10-22 |
+| D13 | PDF is supported and labelled experimental | User, 2026-10-22 |
+| D14 | Read-aloud talks to Speech Dispatcher with a small SSIP client of our own, rather than a crate, to get index-mark events for sentence sync | 2026-10-22 |
+| D15 | Every book page gets a strict CSP (no scripts, forms, frames or remote resources) in addition to the app's own CSP | 2026-10-22 |
+| D16 | Audio goes through Speech Dispatcher's own output, so rodio isn't needed until Piper | 2026-10-22 |
 
 ## 10. Open questions
 
-1. Where should reading data live? Inside the book folder (`.readlet/`, which syncs with the books;
-   the default), or in the app's data dir (the folder stays untouched, but no sync)?
-2. License: GPL-3.0-or-later, which matches your other apps and Piper's license, or MIT?
+1. ~~Where should reading data live?~~ In the book folder (D11).
+2. ~~License?~~ GPL-3.0-or-later (D12).
 3. How to integrate Piper (an M6 spike): libpiper via FFI, a bundled `piper` binary, or piper-rs.
    Piper moved to [OHF-Voice/piper1-gpl](https://github.com/OHF-Voice/piper1-gpl) (GPL-3.0) after
-   rhasspy/piper was archived in October 2025.
-4. PDF: foliate-js support is experimental. Is that good enough, or is PDF out of scope?
+   rhasspy/piper was archived in October 2025. In the meantime, Readlet uses whatever Speech
+   Dispatcher's output module provides, so a Piper module configured there should work as is
+   (not yet tried).
+4. ~~PDF?~~ Yes, labelled experimental (D13).
 5. Android later via Tauri 2? If so, avoid desktop-only APIs in the UI layer.
 
 ## 11. References
