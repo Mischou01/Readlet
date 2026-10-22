@@ -1,4 +1,4 @@
-import { Trash2 } from 'lucide-react'
+import { Bookmark, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { IconButton } from '../components/Button'
 import { Segmented } from '../components/Fields'
@@ -15,6 +15,8 @@ interface ContentsSheetProps {
   toc: TocItem[]
   currentTocId: number | undefined
   bookmarks: Annotation[]
+  /** TOC items (by id) with a bookmark in them. */
+  bookmarkedTocIds: ReadonlySet<number>
   highlights: Annotation[]
   onGoTo: (target: string) => void
   onDeleteBookmark: (annotation: Annotation) => void
@@ -22,7 +24,7 @@ interface ContentsSheetProps {
 }
 
 export function ContentsSheet(props: ContentsSheetProps) {
-  const { toc, currentTocId, bookmarks, highlights, onGoTo } = props
+  const { toc, currentTocId, bookmarks, bookmarkedTocIds, highlights, onGoTo } = props
   const [tab, setTab] = useState<Tab>('contents')
   const list = useRef<HTMLDivElement>(null)
 
@@ -33,8 +35,10 @@ export function ContentsSheet(props: ContentsSheetProps) {
   }, [tab])
 
   return (
-    <Sheet title="Contents" onClose={props.onClose}>
-      <div style={{ marginBottom: 14 }}>
+    <Sheet
+      title="Contents"
+      onClose={props.onClose}
+      toolbar={
         <Segmented
           label="Show"
           value={tab}
@@ -51,11 +55,18 @@ export function ContentsSheet(props: ContentsSheetProps) {
             },
           ]}
         />
-      </div>
+      }
+    >
       <div ref={list}>
         {tab === 'contents' &&
           (toc.length ? (
-            <TocTree items={toc} depth={0} currentId={currentTocId} onGoTo={onGoTo} />
+            <TocTree
+              items={toc}
+              depth={0}
+              currentId={currentTocId}
+              bookmarked={bookmarkedTocIds}
+              onGoTo={onGoTo}
+            />
           ) : (
             <p className={styles.emptyNote}>This book has no table of contents.</p>
           ))}
@@ -127,11 +138,13 @@ function TocTree({
   items,
   depth,
   currentId,
+  bookmarked,
   onGoTo,
 }: {
   items: TocItem[]
   depth: number
   currentId: number | undefined
+  bookmarked: ReadonlySet<number>
   onGoTo: (href: string) => void
 }) {
   return (
@@ -140,18 +153,28 @@ function TocTree({
         <li key={item.id ?? `${depth}-${i}`}>
           <button
             type="button"
-            className={styles.tocItem}
+            className={`${styles.tocItem} ${styles.tocRow}`}
             style={{ paddingLeft: 12 + depth * 16 }}
             aria-current={item.id !== undefined && item.id === currentId}
             onClick={() => onGoTo(item.href)}
           >
-            {item.label.trim() || 'Untitled'}
+            <span>{item.label.trim() || 'Untitled'}</span>
+            {item.id !== undefined && bookmarked.has(item.id) && (
+              <Bookmark
+                className={styles.tocBookmark}
+                size={14}
+                strokeWidth={2}
+                role="img"
+                aria-label="Bookmarked"
+              />
+            )}
           </button>
           {item.subitems?.length ? (
             <TocTree
               items={item.subitems}
               depth={depth + 1}
               currentId={currentId}
+              bookmarked={bookmarked}
               onGoTo={onGoTo}
             />
           ) : null}

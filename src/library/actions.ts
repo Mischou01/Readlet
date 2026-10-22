@@ -4,7 +4,7 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { api, toAppError } from '../lib/ipc'
 import { pluralize } from '../lib/format'
 import { useApp, type OpeningCover } from '../state/app'
-import { useLibrary } from '../state/library'
+import { expectAddedFiles, useLibrary } from '../state/library'
 import { showError, useToasts } from '../state/toasts'
 import { resetIndexer } from './indexer'
 
@@ -26,6 +26,7 @@ export async function addBookFiles(paths: string[]) {
   if (paths.length === 0) return
   try {
     const added = await api.addBooks(paths)
+    expectAddedFiles(added)
     const skipped = paths.length - added.length
     const message =
       added.length === 0

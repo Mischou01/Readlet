@@ -6,6 +6,7 @@ import { ProgressBar } from '../components/Progress'
 import { formatAuthors, formatPercent, formatTimeLeft } from '../lib/format'
 import { readPosition } from '../state/positions'
 import { usePreferences } from '../state/preferences'
+import { paceFor } from '../stats/pace'
 import { openBook } from './actions'
 import styles from './library.module.css'
 import type { LibraryBook } from './model'
@@ -17,7 +18,9 @@ export function Hero({ book }: { book: LibraryBook }) {
   const started = book.fraction > 0
   const position = readPosition(book.fingerprint)
   const chapter = position?.label ?? book.record?.progress?.label
-  const minutesLeft = position ? position.bytesLeftInSection / bytesPerMinute : null
+  const minutesLeft = position
+    ? position.bytesLeftInSection / paceFor(bytesPerMinute, position.pace)
+    : null
   const authors = formatAuthors(book.authors)
 
   return (

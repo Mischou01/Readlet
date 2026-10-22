@@ -2,12 +2,10 @@ import { FolderOpen, RefreshCw } from 'lucide-react'
 import { Button } from '../components/Button'
 import { FieldLabel, Segmented, Switch } from '../components/Fields'
 import { Sheet } from '../components/Sheet'
-import { api } from '../lib/ipc'
 import { pickLibraryFolder } from '../library/actions'
 import { useApp } from '../state/app'
 import { useLibrary } from '../state/library'
 import { usePreferences, type Appearance } from '../state/preferences'
-import { useToasts } from '../state/toasts'
 import styles from './settings.module.css'
 
 const APPEARANCES: { value: Appearance; label: string }[] = [
@@ -62,11 +60,7 @@ export function SettingsSheet() {
               size="small"
               variant="quiet"
               icon={<RefreshCw size={16} strokeWidth={1.8} aria-hidden="true" />}
-              onClick={() => {
-                useLibrary.getState().setScanning(true)
-                void api.rescanLibrary()
-                useToasts.getState().show({ message: 'Looking for new books' })
-              }}
+              onClick={() => useLibrary.getState().rescan()}
             >
               Rescan
             </Button>

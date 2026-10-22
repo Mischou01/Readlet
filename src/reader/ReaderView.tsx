@@ -24,6 +24,7 @@ import {
   BookView,
   type BookLayout,
   type BookViewHandle,
+  type SectionPages,
   type SelectionInfo,
   type TapZone,
 } from './BookView'
@@ -53,6 +54,7 @@ import styles from './reader.module.css'
 import { SearchSheet } from './SearchSheet'
 import { TextSettingsSheet } from './TextSettingsSheet'
 import { readerChromeVars, resolveReadingTheme } from './themes'
+import { useBookPace } from './useBookPace'
 import { useReadAloud } from './useReadAloud'
 import { chapterLabel } from './toc'
 import { useReadingSession } from './useReadingSession'
@@ -106,7 +108,6 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
   const navigate = useApp((s) => s.navigate)
   const readerPrefs = usePreferences((s) => s.prefs.reader)
   const reduceTransparency = usePreferences((s) => s.prefs.reduceTransparency)
-  const bytesPerMinute = usePreferences((s) => s.prefs.bytesPerMinute)
   const systemScheme = useSystemColorScheme()
   const windowWidth = useWindowWidth()
 
@@ -115,6 +116,7 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
   const tocRef = useRef<TocItem[]>([])
   const [ready, setReady] = useState(false)
   const [location, setLocation] = useState<Location | null>(null)
+  const [sectionPages, setSectionPages] = useState<SectionPages | null>(null)
   const [chromeVisible, setChromeVisible] = useState(true)
   const [hoveringChrome, setHoveringChrome] = useState(false)
   const [sheet, setSheet] = useState<ReaderSheet | null>(null)
@@ -206,6 +208,7 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
   const [fixedLayout, setFixedLayout] = useState(false)
 
   const session = useReadingSession(fingerprint, record?.progress?.fraction ?? 0, readingAloud)
+  const { bytesPerMinute, relocated: paceRelocated } = useBookPace(fingerprint, readingAloud)
 
   // -- Progress ---------------------------------------------------------------------------------
 
@@ -225,8 +228,9 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
   const recordRef = useLatest(record)
   const statusChecked = useRef(false)
   const onRelocate = useCallback(
-    (loc: Location) => {
+    (loc: Location, pages: SectionPages | null) => {
       setLocation(loc)
+      setSectionPages(pages)
       const label = chapterLabel(tocRef.current, loc.tocItem)
       if (loc.cfi) {
         pendingProgress.current = { cfi: loc.cfi, fraction: loc.fraction, label }
@@ -235,12 +239,14 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
       const bookBytes = (loc.location?.total ?? 0) * BYTES_PER_LOCATION
       session.relocated(loc.fraction, loc.range?.toString() ?? '', bookBytes)
       if (loc.time && loc.section) {
+        const bytesLeftInBook = loc.time.total * FOLIATE_BYTES_PER_MINUTE
         savePosition(fingerprint, {
           label,
           section: loc.section.current,
           sections: loc.section.total,
           bytesLeftInSection: loc.time.section * FOLIATE_BYTES_PER_MINUTE,
-          bytesLeftInBook: loc.time.total * FOLIATE_BYTES_PER_MINUTE,
+          bytesLeftInBook,
+          pace: paceRelocated(bytesLeftInBook),
           updatedAt: Date.now(),
         })
       }
@@ -266,7 +272,7 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
           )
       }
     },
-    [fingerprint, saveProgressSoon, session, recordRef],
+    [fingerprint, saveProgressSoon, session, paceRelocated, recordRef],
   )
 
   // Flush progress and the session when leaving the book or closing the window.
@@ -429,6 +435,30 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
       return []
     }
   }, [bookmarks, location])
+
+  // Which chapters hold bookmarks, for the contents list. Worked out when it's open, since finding
+  // a bookmark's chapter means reading that chapter's document.
+  const contentsOpen = sheet === 'contents'
+  const [bookmarkedTocIds, setBookmarkedTocIds] = useState<ReadonlySet<number>>(() => new Set())
+  useEffect(() => {
+    if (!contentsOpen || !ready) return
+    let cancelled = false
+    void (async () => {
+      const ids = new Set<number>()
+      for (const b of bookmarks) {
+        const item = await handle.current?.tocItemOf(b.cfi).catch(() => null)
+        if (item?.id !== undefined) ids.add(item.id)
+      }
+      if (!cancelled) setBookmarkedTocIds(ids)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [bookmarks, contentsOpen, ready])
+  const bookmarkFractions = useMemo(
+    () => bookmarks.flatMap((b) => (b.fraction != null ? [b.fraction] : [])),
+    [bookmarks],
+  )
 
   const [bookmarksAdded, setBookmarksAdded] = useState(0)
   const toggleBookmark = async () => {
@@ -712,7 +742,9 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
         <ReaderFooter
           fraction={location?.fraction ?? record?.progress?.fraction ?? 0}
           minutesLeft={minutesLeft}
+          sectionPages={sectionPages}
           pageLabel={location?.pageItem?.label}
+          bookmarks={bookmarkFractions}
           onSeek={seek}
         />
       )}
@@ -737,6 +769,7 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
             toc={toc}
             currentTocId={location?.tocItem?.id}
             bookmarks={bookmarks}
+            bookmarkedTocIds={bookmarkedTocIds}
             highlights={highlights}
             onGoTo={goTo}
             onDeleteBookmark={(b) => void apply(api.deleteAnnotation(fingerprint, b.id))}

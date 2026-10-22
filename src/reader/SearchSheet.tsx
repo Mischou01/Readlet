@@ -26,7 +26,7 @@ export function SearchSheet({ search, onGoTo, onClose }: SearchSheetProps) {
   const input = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    input.current?.focus()
+    input.current?.focus({ preventScroll: true })
     return () => stop.current?.()
   }, [])
 
@@ -52,26 +52,31 @@ export function SearchSheet({ search, onGoTo, onClose }: SearchSheetProps) {
 
   const total = groups.reduce((n, g) => n + g.items.length, 0)
   return (
-    <Sheet title="Search" onClose={onClose}>
-      <form
-        role="search"
-        onSubmit={(e) => {
-          e.preventDefault()
-          run()
-        }}
-      >
-        <label className={styles.searchField}>
-          <Search size={18} strokeWidth={1.8} aria-hidden="true" />
-          <span className="visually-hidden">Search in this book</span>
-          <input
-            ref={input}
-            type="search"
-            placeholder="Search in this book"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-        </label>
-      </form>
+    <Sheet
+      title="Search"
+      onClose={onClose}
+      toolbar={
+        <form
+          role="search"
+          onSubmit={(e) => {
+            e.preventDefault()
+            run()
+          }}
+        >
+          <label className={styles.searchField}>
+            <Search size={18} strokeWidth={1.8} aria-hidden="true" />
+            <span className="visually-hidden">Search in this book</span>
+            <input
+              ref={input}
+              type="search"
+              placeholder="Search in this book"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </label>
+        </form>
+      }
+    >
       <p className={styles.searchStatus} role="status">
         {progress !== null
           ? `Searching… ${Math.round(progress * 100)}%${total ? `, ${pluralize(total, 'result')} so far` : ''}`

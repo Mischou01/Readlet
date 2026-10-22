@@ -100,6 +100,10 @@
   font-weight: 650;
 }
 
+.sheetToolbar {
+  padding: 8px 22px 6px;
+}
+
 .sheetBody {
   flex: 1;
   min-height: 0;

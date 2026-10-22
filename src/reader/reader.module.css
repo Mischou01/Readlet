@@ -1,7 +1,8 @@
 .page {
   position: relative;
   height: 100%;
-  overflow: hidden;
+  /* clip, not hidden: a hidden box can still be scrolled, e.g. by focusing a sheet sliding in. */
+  overflow: clip;
   background: var(--fog);
   color: var(--ink);
   transition: background-color 400ms var(--ease-out);
@@ -154,11 +155,23 @@
 .footerText {
   display: flex;
   justify-content: space-between;
+  align-items: flex-end;
   gap: 16px;
   padding: 0 32px 18px;
   font-size: 13.5px;
   font-variant-numeric: tabular-nums;
   color: var(--haze);
+}
+
+.chapterProgress {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.chapterProgress > span + span {
+  font-size: 12.5px;
+  opacity: 0.85;
 }
 
 .seek {
@@ -189,6 +202,19 @@
 
 .seek:hover {
   height: 5px;
+}
+
+/* Bookmarks along the progress bar. */
+.seekMark {
+  position: absolute;
+  bottom: 0;
+  width: 3px;
+  height: 9px;
+  margin-left: -1.5px;
+  border-radius: 2px 2px 0 0;
+  background: var(--ink);
+  opacity: 0.55;
+  pointer-events: none;
 }
 
 /* -- Sheets ----------------------------------------------------------------------------------- */
@@ -333,6 +359,19 @@
   background: var(--hover);
 }
 
+.tocRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.tocBookmark {
+  flex: none;
+  color: var(--accent);
+  fill: currentColor;
+}
+
 .tocItem[aria-current='true'] {
   background: var(--glass-strong);
   font-weight: 650;
@@ -407,7 +446,7 @@
 }
 
 .searchStatus {
-  margin: 12px 4px 4px;
+  margin: 4px 4px;
   font-size: 13px;
   color: var(--haze);
 }

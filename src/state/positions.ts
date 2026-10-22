@@ -2,6 +2,8 @@
 // of 12", "9 min left in chapter"). Synced progress only carries the position itself, so books
 // last read on another device show less until they're opened here.
 
+import type { BookPace } from '../stats/pace'
+
 export interface PositionInfo {
   label?: string
   section: number
@@ -9,6 +11,8 @@ export interface PositionInfo {
   /** Bytes of book text left in the chapter / the book, as foliate-js measures them. */
   bytesLeftInSection: number
   bytesLeftInBook: number
+  /** The reading pace in this book (stats/pace.ts). */
+  pace?: BookPace | null
   updatedAt: number
 }
 

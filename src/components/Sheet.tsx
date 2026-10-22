@@ -11,19 +11,31 @@ interface SheetProps {
   children: ReactNode
   /** Extra controls in the header, before the close button. */
   actions?: ReactNode
+  /** Controls under the header that stay put while the body scrolls (tabs, a search field). */
+  toolbar?: ReactNode
   style?: CSSProperties
   className?: string
 }
 
 /** A glass side sheet that slides in from the right. Escape closes it. */
-export function Sheet({ title, onClose, children, actions, style, className }: SheetProps) {
+export function Sheet({
+  title,
+  onClose,
+  children,
+  actions,
+  toolbar,
+  style,
+  className,
+}: SheetProps) {
   const ref = useRef<HTMLElement>(null)
   const titleId = useId()
   useEscape(onClose)
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null
-    ref.current?.focus()
-    return () => previous?.focus?.()
+    // Without preventScroll, focusing the sheet while it's still off-screen scrolls its container
+    // sideways, and the whole view lurches left and drifts back as the sheet slides in.
+    ref.current?.focus({ preventScroll: true })
+    return () => previous?.focus?.({ preventScroll: true })
   }, [])
   return (
     <motion.aside
@@ -48,6 +60,7 @@ export function Sheet({ title, onClose, children, actions, style, className }: S
           </IconButton>
         </div>
       </div>
+      {toolbar && <div className={styles.sheetToolbar}>{toolbar}</div>}
       <div className={styles.sheetBody}>{children}</div>
     </motion.aside>
   )

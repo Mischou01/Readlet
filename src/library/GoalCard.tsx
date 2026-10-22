@@ -6,6 +6,7 @@ import { useToday } from '../lib/hooks'
 import { useApp } from '../state/app'
 import { readPosition } from '../state/positions'
 import { usePreferences } from '../state/preferences'
+import { paceFor } from '../stats/pace'
 import { useDailyGoal, useStats } from '../state/stats'
 import { currentStreak, dayTotals, minutesOn } from '../stats/stats'
 import styles from './library.module.css'
@@ -25,8 +26,9 @@ export function GoalCard({ current }: { current: LibraryBook | null }) {
   }, [sessions, day])
 
   const remaining = Math.max(0, goal - today)
-  const chapterMinutes = current
-    ? (readPosition(current.fingerprint)?.bytesLeftInSection ?? Infinity) / bytesPerMinute
+  const position = current ? readPosition(current.fingerprint) : null
+  const chapterMinutes = position
+    ? position.bytesLeftInSection / paceFor(bytesPerMinute, position.pace)
     : Infinity
   const hint =
     remaining === 0

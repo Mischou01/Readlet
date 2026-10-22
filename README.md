@@ -14,9 +14,10 @@ doing the book layout. The first target is Fedora with GNOME on Wayland.
   and shelves. Drop files on the window to copy them into the folder.
 - **Reader:** paginated or scrolled, with two-page spreads on wide windows. It has a table of
   contents, in-book search, footnote popovers and four reading themes (Paper, Sepia, Dusk and
-  Night). You can set the font, size, spacing and margins, and the footer shows the time left in
-  the chapter.
-- **Highlights and notes** in five colours, plus bookmarks. Words can be looked up on Wiktionary;
+  Night). You can set the font, size, spacing and margins. The footer shows the pages and time
+  left in the chapter, at your own pace in that book, which Readlet learns as you read.
+- **Highlights and notes** in five colours, plus bookmarks, which are marked in the contents and
+  along the progress bar. Words can be looked up on Wiktionary;
   this is the only feature that goes online, and only when you ask.
 - **Highlights hub:** every highlight from every book, filtered by book, shelf or colour, and
   searchable. Any highlight takes you back to its passage, or exports as Markdown for Obsidian:

@@ -13,6 +13,8 @@ import type {
   Shelf,
 } from '../lib/types'
 import { joinLibrary, type LibraryBook } from '../library/model'
+import { scanChanges, scanMessage } from '../library/scanChanges'
+import { showError, useToasts } from './toasts'
 
 interface LibraryState {
   books: Record<string, BookEntry>
@@ -20,6 +22,8 @@ interface LibraryState {
   shelves: Shelf[]
   loaded: boolean
   scanning: boolean
+  /** The reader asked for the scan in progress, so its result gets reported even if empty. */
+  rescanRequested: boolean
   lastScan: ScanReport | null
   error: AppError | null
   load: () => Promise<void>
@@ -30,9 +34,20 @@ interface LibraryState {
   putBook: (entry: BookEntry) => void
   putRecord: (record: BookRecord) => void
   setScanning: (scanning: boolean) => void
+  /** Scans the folder because the reader asked to, and reports what changed. */
+  rescan: () => void
+  /** Reports which books came or went since the last scan. */
   scanFinished: (report: ScanReport) => Promise<void>
   setStatus: (fingerprint: string, status: ReadingStatus) => Promise<void>
   setShelves: (shelves: Shelf[]) => void
+}
+
+/** Files Readlet just copied into the folder and already announced ("Added 2 books"). */
+const announcedFiles = new Set<string>()
+
+/** Keeps the next scan from announcing these files (names in the folder) a second time. */
+export function expectAddedFiles(names: string[]) {
+  for (const name of names) announcedFiles.add(name)
 }
 
 function byFingerprint<T extends { fingerprint: string }>(items: T[]): Record<string, T> {
@@ -45,6 +60,7 @@ export const useLibrary = create<LibraryState>((set, get) => ({
   shelves: [],
   loaded: false,
   scanning: true,
+  rescanRequested: false,
   lastScan: null,
   error: null,
   load: async () => {
@@ -66,7 +82,15 @@ export const useLibrary = create<LibraryState>((set, get) => ({
     }
   },
   reset: () =>
-    set({ books: {}, records: {}, shelves: [], loaded: false, scanning: true, lastScan: null }),
+    set({
+      books: {},
+      records: {},
+      shelves: [],
+      loaded: false,
+      scanning: true,
+      rescanRequested: false,
+      lastScan: null,
+    }),
   refreshBooks: async () => {
     const books = await api.listBooks()
     set({ books: byFingerprint(books) })
@@ -84,9 +108,26 @@ export const useLibrary = create<LibraryState>((set, get) => ({
   putBook: (entry) => set((s) => ({ books: { ...s.books, [entry.fingerprint]: entry } })),
   putRecord: (record) => set((s) => ({ records: { ...s.records, [record.fingerprint]: record } })),
   setScanning: (scanning) => set({ scanning }),
+  rescan: () => {
+    set({ scanning: true, rescanRequested: true })
+    useToasts.getState().show({ message: 'Looking for new books' })
+    api.rescanLibrary().catch((e: unknown) => {
+      set({ scanning: false, rescanRequested: false })
+      showError(`Couldn’t look for new books: ${toAppError(e).message}`)
+    })
+  },
   scanFinished: async (report) => {
-    set({ scanning: false, lastScan: report })
+    const { books: before, loaded, rescanRequested: requested } = get()
+    set({ scanning: false, rescanRequested: false, lastScan: report })
     await get().refreshBooks()
+    // The first scan of a new folder finds everything; that isn't news.
+    if (!requested && (!loaded || Object.keys(before).length === 0)) return
+    const changes = scanChanges(before, get().books)
+    changes.added = changes.added.filter(
+      (b) => !announcedFiles.delete(b.path.split('/').pop() ?? b.path),
+    )
+    const message = scanMessage(changes, requested)
+    if (message) useToasts.getState().show({ message })
   },
   setStatus: async (fingerprint, status) => {
     get().putRecord(await api.setStatus(fingerprint, status))

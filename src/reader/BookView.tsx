@@ -10,6 +10,7 @@ import {
   type Book,
   type Location,
   type SearchResult,
+  type TocItem,
   type View,
   createView,
 } from './foliate'
@@ -50,6 +51,8 @@ export interface BookViewHandle {
   clearSearch(): void
   deselect(): void
   sectionFractions(): number[]
+  /** The table of contents entry a location falls under. */
+  tocItemOf(cfi: string): Promise<TocItem | null>
   /** The underlying view, for read-aloud. */
   view(): View | null
   /** Marks the sentence being read aloud (or clears the mark) and keeps it on screen. */
@@ -57,6 +60,12 @@ export interface BookViewHandle {
 }
 
 export type TapZone = 'left' | 'center' | 'right'
+
+/** The screen showing within the current section (chapter), when the text is paginated. */
+export interface SectionPages {
+  current: number
+  total: number
+}
 
 interface BookViewProps {
   book: Book
@@ -67,7 +76,7 @@ interface BookViewProps {
   dark: boolean
   onReady(info: { fixedLayout: boolean }): void
   onError(error: unknown): void
-  onRelocate(location: Location): void
+  onRelocate(location: Location, pages: SectionPages | null): void
   onSelection(selection: SelectionInfo | null): void
   onHighlightClick(cfi: string, rect: DOMRect): void
   onFootnote(footnote: { element: HTMLElement; rect: DOMRect }): void
@@ -87,6 +96,8 @@ const WHEEL_COOLDOWN_MS = 450
 const EDGE_TAP_PX = 56
 /** Where a tap turns the page when the text area is unknown (fixed layouts): the outer 22%. */
 const EDGE_TAP_FRACTION = 0.22
+/** How long a tap on the text waits for a second click before it counts as a tap. */
+const DOUBLE_CLICK_MS = 260
 
 /**
  * The box the text is laid out in. foliate's paginator puts each page's iframe in a `#container`
@@ -114,6 +125,14 @@ function toWindowRect(rect: DOMRect, doc: Document): DOMRect {
   return frame
     ? new DOMRect(rect.left + frame.left, rect.top + frame.top, rect.width, rect.height)
     : rect
+}
+
+function sectionPages(view: View): SectionPages | null {
+  const { page, pages } = view.renderer
+  if (view.isFixedLayout || view.renderer.getAttribute('flow') === 'scrolled') return null
+  if (page === undefined || pages === undefined || pages < 3) return null
+  const total = pages - 2
+  return { current: Math.min(Math.max(page, 1), total), total }
 }
 
 function firstVisibleRect(range: Range): DOMRect {
@@ -173,6 +192,7 @@ export function BookView(props: BookViewProps) {
       clearSearch: () => viewRef.current?.clearSearch(),
       deselect: () => viewRef.current?.deselect(),
       sectionFractions: () => viewRef.current?.getSectionFractions() ?? [],
+      tocItemOf: async (cfi) => (await viewRef.current?.getTOCItemOf(cfi)) ?? null,
       view: () => viewRef.current,
       markSpeaking: (range, color) => {
         const view = viewRef.current
@@ -208,6 +228,8 @@ export function BookView(props: BookViewProps) {
     let lastLinkRect = new DOMRect()
     let wheelDelta = 0
     let wheelLockedUntil = 0
+    let pendingTap: ReturnType<typeof setTimeout> | undefined
+    const cancelPendingTap = () => clearTimeout(pendingTap)
     const footnotes = new FootnoteHandler()
 
     const onWheel = (e: WheelEvent) => {
@@ -278,8 +300,16 @@ export function BookView(props: BookViewProps) {
         callbacks.current.onPointerMove()
       })
       doc.addEventListener('wheel', onWheel, { passive: true })
+      // A second press means a double-click (selecting a word), so a tap still waiting is dropped.
+      let lastPress = 0
+      doc.addEventListener('pointerdown', (e) => {
+        lastPress = e.timeStamp
+        cancelPendingTap()
+      })
       doc.addEventListener('click', (e) => {
         callbacks.current.onActivity()
+        // The later clicks of a double or triple click select text; they aren't taps.
+        if (e.detail > 1) return
         if (e.defaultPrevented || (e.target as Element | null)?.closest?.('a[href]')) return
         if (!doc.getSelection()?.isCollapsed) return
         const frame = doc.defaultView?.frameElement?.getBoundingClientRect()
@@ -290,7 +320,17 @@ export function BookView(props: BookViewProps) {
             highlightClicked = false
             return
           }
-          callbacks.current.onTap(zoneAt(x))
+          const zone = zoneAt(x)
+          // Margins turn the page at once. A tap on the text waits to see whether it's the start
+          // of a double-click, so selecting a word doesn't flash the toolbar or the selection bar.
+          if (zone !== 'center') {
+            callbacks.current.onTap(zone)
+            return
+          }
+          pendingTap = setTimeout(() => {
+            if (lastPress > e.timeStamp || !doc.getSelection()?.isCollapsed) return
+            callbacks.current.onTap('center')
+          }, DOUBLE_CLICK_MS)
         }, 0)
       })
     }
@@ -298,7 +338,7 @@ export function BookView(props: BookViewProps) {
     view.addEventListener('load', ((e: CustomEvent<{ doc: Document; index: number }>) =>
       attachToPage(e.detail.doc, e.detail.index)) as EventListener)
     view.addEventListener('relocate', ((e: CustomEvent<Location>) =>
-      callbacks.current.onRelocate(e.detail)) as EventListener)
+      callbacks.current.onRelocate(e.detail, sectionPages(view))) as EventListener)
     view.addEventListener('create-overlay', () => {
       for (const [cfi, color] of marks.current) void view.addAnnotation({ value: cfi, color })
     })
@@ -376,6 +416,7 @@ export function BookView(props: BookViewProps) {
 
     return () => {
       cancelled = true
+      cancelPendingTap()
       host.removeEventListener('wheel', onWheel)
       host.removeEventListener('click', onHostClick)
       view.close()
