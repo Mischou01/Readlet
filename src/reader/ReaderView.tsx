@@ -1,7 +1,7 @@
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { ArrowLeft } from 'lucide-react'
-import { AnimatePresence } from 'motion/react'
+import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AuraField } from '../components/AuraField'
 import { Button, IconButton } from '../components/Button'
@@ -11,6 +11,7 @@ import { HIGHLIGHTS } from '../lib/highlightColors'
 import { newId } from '../lib/ids'
 import { api, toAppError } from '../lib/ipc'
 import { bookTitle } from '../lib/text'
+import { handleWindowShortcut } from '../lib/window'
 import type { Annotation, BookRecord, HighlightColor } from '../lib/types'
 import { FINISHED_FRACTION, liveAnnotations, statusOf } from '../library/model'
 import { useApp } from '../state/app'
@@ -323,12 +324,15 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
     [highlights],
   )
 
+  /** Saves an annotation change; false if it failed (the reader has been told). */
   const apply = useCallback(
-    async (change: Promise<BookRecord>) => {
+    async (change: Promise<BookRecord>): Promise<boolean> => {
       try {
         putRecord(await change)
+        return true
       } catch (e) {
         showError(toAppError(e).message)
+        return false
       }
     },
     [putRecord],
@@ -426,6 +430,7 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
     }
   }, [bookmarks, location])
 
+  const [bookmarksAdded, setBookmarksAdded] = useState(0)
   const toggleBookmark = async () => {
     if (pageBookmarks.length) {
       for (const b of pageBookmarks) await apply(api.deleteAnnotation(fingerprint, b.id))
@@ -433,7 +438,7 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
     }
     if (!location?.cfi) return
     const text = (location.range?.toString() ?? '').replace(/\s+/g, ' ').trim().slice(0, 160)
-    await apply(
+    const added = await apply(
       api.putAnnotation(fingerprint, {
         id: newId(),
         kind: 'bookmark',
@@ -443,6 +448,7 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
         fraction: location.fraction,
       }),
     )
+    if (added) setBookmarksAdded((n) => n + 1)
   }
 
   // -- Read-aloud -------------------------------------------------------------------------------
@@ -486,7 +492,7 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
 
   const onKey = useLatest((e: KeyboardEvent) => {
     const h = handle.current
-    if (!h || e.defaultPrevented) return
+    if (!h || e.defaultPrevented || handleWindowShortcut(e)) return
     const mod = e.ctrlKey || e.metaKey
     if (mod && e.key.toLowerCase() === 'f') {
       e.preventDefault()
@@ -656,6 +662,23 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
         )}
       </div>
 
+      <AnimatePresence>
+        {pageBookmarks.length > 0 && ready && (
+          <motion.button
+            key="ribbon"
+            type="button"
+            className={styles.ribbon}
+            aria-label="Remove bookmark"
+            title="Remove bookmark"
+            initial={{ y: '-100%' }}
+            animate={{ y: 0 }}
+            exit={{ y: '-100%' }}
+            transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+            onClick={() => void toggleBookmark()}
+          />
+        )}
+      </AnimatePresence>
+
       {readingAloud ? (
         <IconButton
           glass
@@ -675,6 +698,7 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
           hidden={toolbarHidden}
           sheet={sheet}
           bookmarked={pageBookmarks.length > 0}
+          bookmarksAdded={bookmarksAdded}
           readingAloud={readingAloud}
           onBack={() => navigate({ name: 'library' })}
           onSheet={(s) => setSheet((current) => (current === s ? null : s))}

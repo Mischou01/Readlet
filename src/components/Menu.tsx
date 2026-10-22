@@ -159,11 +159,20 @@ interface MenuButtonProps {
   align?: 'start' | 'end'
   className?: string
   title?: string
+  disabled?: boolean
   children: ReactNode
 }
 
 /** A button that opens a `Menu` below itself and returns focus when it closes. */
-export function MenuButton({ label, items, align, className, title, children }: MenuButtonProps) {
+export function MenuButton({
+  label,
+  items,
+  align,
+  className,
+  title,
+  disabled,
+  children,
+}: MenuButtonProps) {
   const button = useRef<HTMLButtonElement>(null)
   const [anchor, setAnchor] = useState<DOMRect | null>(null)
   return (
@@ -176,6 +185,7 @@ export function MenuButton({ label, items, align, className, title, children }: 
         aria-expanded={anchor !== null}
         aria-label={title ? undefined : label}
         title={title}
+        disabled={disabled}
         onClick={() => setAnchor(button.current?.getBoundingClientRect() ?? null)}
       >
         {children}

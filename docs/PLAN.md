@@ -174,8 +174,9 @@ element.
 
 - Radii scale with size: the dock and chips are fully round, sheets 28px, popovers 18px and covers
   8px (covers should still look like books).
-- Glass is used only for things that float: the dock, the reader toolbar, popovers, side sheets and
-  the selection menu. It is never used for the page or for a grid of cards.
+- Glass is used only for things that float: the dock, the reader toolbar and side sheets. It is
+  never used for the page or for a grid of cards. Menus, popovers and toasts are nearly opaque
+  without blur, and glass is kept fairly opaque, because heavy transparency hurt legibility.
 - Shadows are tinted with ink, large and soft, with one elevation per layer. Glass gets a 1px
   highlight along its top inner edge.
 - A "Reduce transparency" setting swaps glass for solid tinted surfaces. Readlet also falls back to
@@ -185,9 +186,14 @@ element.
 
 - One signature moment: opening a book. The cover grows from the grid into the page while the
   aura dissolves.
-- All other motion responds to the reader's input: sheets slide in, the toolbar fades after 2 s of
-  stillness, and page turns slide (or are instant). With `prefers-reduced-motion`, everything
-  becomes a crossfade.
+- All other motion responds to the reader's input: sheets slide in, the toolbar slides away after
+  2 s of stillness, and page turns slide (or are instant). With `prefers-reduced-motion`,
+  everything becomes a crossfade.
+- Nothing that carries a backdrop blur fades its own opacity. Fading glass (or its ancestors) is
+  the likely cause of a flicker seen at the end of transitions, as the blur pops back in. Views
+  cross-fade with a curtain laid over them instead, and sheets only slide.
+- Nothing animates forever. The aura is a still colour field with soft edges (masks, not
+  `filter: blur`), because the drifting blurred blobs kept the CPU busy (over 200% in testing).
 
 ### Layout
 

@@ -55,8 +55,8 @@ Nothing is sent anywhere. There are no accounts and no telemetry.
 
 ## Install
 
-Linux packages (`.rpm`, `.deb`) are built by CI on every push to `main` and attached to the
-workflow run as artifacts.
+Linux packages (`.rpm`, `.deb`) are built by CI on every push to `main` and published as the
+`main-build` pre-release on the repository's Releases page, replacing the previous build.
 
 For read-aloud, install Speech Dispatcher and a voice, for example on Fedora:
 

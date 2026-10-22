@@ -1,4 +1,12 @@
 .field {
+  --soft-edge: radial-gradient(
+    closest-side,
+    #000 0%,
+    rgba(0, 0, 0, 0.82) 30%,
+    rgba(0, 0, 0, 0.45) 58%,
+    rgba(0, 0, 0, 0.14) 82%,
+    transparent 100%
+  );
   position: absolute;
   pointer-events: none;
   opacity: var(--aura-opacity);
@@ -7,10 +15,15 @@
 
 .blob {
   position: absolute;
-  border-radius: 50%;
-  filter: blur(90px);
+  /* Each blob is a soft ellipse grown 160px past its box. A gradient mask draws a similar falloff to what
+     a blur filter gives, at a fraction of the cost, and the field stays still: moving it would make
+     every frosted surface above it redraw its blur on every frame. */
+  box-sizing: content-box;
+  padding: 160px;
+  margin: -160px;
+  -webkit-mask-image: var(--soft-edge);
+  mask-image: var(--soft-edge);
   transition: background-color 1.4s var(--ease-out);
-  animation: drift 38s ease-in-out infinite alternate;
 }
 
 .blob:nth-child(1) {
@@ -18,13 +31,9 @@
 }
 .blob:nth-child(2) {
   background: var(--aura-2);
-  animation-duration: 46s;
-  animation-delay: -12s;
 }
 .blob:nth-child(3) {
   background: var(--aura-3);
-  animation-duration: 52s;
-  animation-delay: -24s;
 }
 
 /* Library: a wide field across the top. */
@@ -89,9 +98,6 @@
   margin-left: -550px;
   opacity: 0.55;
 }
-.bottom .blob {
-  filter: blur(80px);
-}
 .bottom .blob:nth-child(1) {
   left: 0;
   top: 60px;
@@ -109,19 +115,4 @@
   top: 60px;
   width: 500px;
   height: 360px;
-}
-
-@keyframes drift {
-  from {
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-  to {
-    transform: translate3d(4%, 3%, 0) scale(1.08);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .blob {
-    animation: none;
-  }
 }

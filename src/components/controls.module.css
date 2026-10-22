@@ -108,7 +108,21 @@
   background: var(--hover);
 }
 
-.close {
+/* Window controls: small round glyphs with a full-size hit area. */
+.windowControls {
+  display: flex;
+  align-items: center;
+}
+
+.windowButton {
+  width: 34px;
+}
+
+.windowButton:hover:not(:disabled) {
+  background: transparent;
+}
+
+.windowGlyph {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -116,6 +130,11 @@
   height: 28px;
   border-radius: var(--radius-pill);
   background: var(--track);
+  transition: background-color var(--duration) var(--ease-out);
+}
+
+.windowButton:hover .windowGlyph {
+  background: var(--line);
 }
 
 .divider {

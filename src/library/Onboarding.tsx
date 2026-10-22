@@ -1,7 +1,7 @@
 import { FolderOpen } from 'lucide-react'
 import { AuraField } from '../components/AuraField'
 import { Button } from '../components/Button'
-import { CloseWindowButton } from '../components/AppHeader'
+import { WindowControls } from '../components/WindowControls'
 import { Logo } from '../components/Logo'
 import { pickLibraryFolder } from './actions'
 import styles from './onboarding.module.css'
@@ -11,8 +11,8 @@ export function Onboarding({ missingFolder }: { missingFolder?: string | null })
   return (
     <div className={styles.page} data-tauri-drag-region>
       <AuraField placement="top" />
-      <div className={styles.close}>
-        <CloseWindowButton />
+      <div className={styles.windowControls}>
+        <WindowControls />
       </div>
       <main className={styles.card}>
         <Logo size={44} />

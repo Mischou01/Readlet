@@ -38,14 +38,12 @@
   backdrop-filter: var(--blur);
   -webkit-backdrop-filter: var(--blur);
   box-shadow: var(--glass-shadow);
-  transition:
-    opacity 260ms var(--ease-out),
-    transform 260ms var(--ease-out);
+  transition: transform 320ms var(--ease-out);
 }
 
+/* Slides away rather than fading: when frosted glass fades, its blur pops in at the end. */
 .toolbar[data-hidden] {
-  opacity: 0;
-  transform: translateY(-8px);
+  transform: translateY(calc(-100% - 64px));
   pointer-events: none;
 }
 
@@ -99,6 +97,37 @@
   display: flex;
   align-items: center;
   gap: 2px;
+}
+
+.toolIcon {
+  display: inline-flex;
+}
+
+.flyingBookmark {
+  position: fixed;
+  z-index: 150;
+  visibility: hidden;
+  display: inline-flex;
+  color: var(--accent);
+  pointer-events: none;
+}
+
+/* The ribbon over a bookmarked page. */
+.ribbon {
+  position: absolute;
+  z-index: 6;
+  top: 0;
+  right: 44px;
+  width: 22px;
+  height: 46px;
+  padding: 0;
+  border: none;
+  background: var(--accent);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 76%, 0 100%);
+}
+
+.withSheet .ribbon {
+  right: 456px;
 }
 
 .aa {

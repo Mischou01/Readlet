@@ -33,10 +33,11 @@ export function Sheet({ title, onClose, children, actions, style, className }: S
       aria-labelledby={titleId}
       className={`${styles.sheet} ${className ?? ''}`}
       style={style}
-      initial={{ opacity: 0, x: 24 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: 24 }}
-      transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+      // Slides in from the edge without fading: frosted glass that fades pops when the fade ends.
+      initial={{ x: '110%' }}
+      animate={{ x: 0 }}
+      exit={{ x: '110%', transition: { duration: 0.2, ease: [0.4, 0, 1, 1] } }}
+      transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
     >
       <div className={styles.sheetHeader}>
         <h2 id={titleId}>{title}</h2>

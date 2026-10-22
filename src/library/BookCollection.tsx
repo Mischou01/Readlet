@@ -1,4 +1,5 @@
 import { Check, ChevronDown, LayoutGrid, List, MoreHorizontal } from 'lucide-react'
+import { AnimatePresence } from 'motion/react'
 import { useMemo, useState, type MouseEvent } from 'react'
 import { Button } from '../components/Button'
 import { Cover } from '../components/Cover'
@@ -6,17 +7,19 @@ import { Dialog } from '../components/Dialog'
 import fieldStyles from '../components/fields.module.css'
 import { Menu, MenuButton, type MenuAnchor, type MenuEntry } from '../components/Menu'
 import { ProgressBar } from '../components/Progress'
-import { formatAuthors, formatDay, formatPercent } from '../lib/format'
+import { formatAuthors, formatDay, formatPercent, pluralize } from '../lib/format'
 import { newId } from '../lib/ids'
-import { api, toAppError } from '../lib/ipc'
 import type { ReadingStatus, Shelf } from '../lib/types'
 import { useApp } from '../state/app'
-import { useLibrary, useVisibleShelves } from '../state/library'
+import { useVisibleShelves } from '../state/library'
 import { usePreferences, type LibrarySort, type LibraryTab } from '../state/preferences'
-import { showError } from '../state/toasts'
+import { useToasts } from '../state/toasts'
 import { openBook, revealBook } from './actions'
 import styles from './library.module.css'
 import { filterBooks, sortBooks, type LibraryBook } from './model'
+import { useBookSelection, type BookSelection } from './selection'
+import { SelectionBar } from './SelectionBar'
+import { deleteShelf, saveShelf, setStatusOf, shelfHasAll, toggleShelf } from './shelves'
 
 const TABS: { id: LibraryTab; label: string }[] = [
   { id: 'all', label: 'All' },
@@ -38,6 +41,12 @@ const STATUS_LABELS: Record<ReadingStatus, string> = {
   finished: 'Finished',
 }
 
+/** What a new shelf starts with, and whether it was made from a selection. */
+interface ShelfDialogState {
+  shelf: Shelf | null
+  books?: string[]
+}
+
 /** The tabs, sort and view controls, and the books themselves. */
 export function BookCollection({ books, query }: { books: LibraryBook[]; query: string }) {
   const { tab, sort, layout, shelf: shelfId } = usePreferences((s) => s.prefs.library)
@@ -45,9 +54,7 @@ export function BookCollection({ books, query }: { books: LibraryBook[]; query: 
   const shelves = useVisibleShelves()
   const shelf = shelves.find((s) => s.id === shelfId) ?? null
   const [menu, setMenu] = useState<{ book: LibraryBook; anchor: MenuAnchor } | null>(null)
-  const [shelfDialog, setShelfDialog] = useState<{ shelf: Shelf | null; addBook?: string } | null>(
-    null,
-  )
+  const [shelfDialog, setShelfDialog] = useState<ShelfDialogState | null>(null)
 
   const counts = useMemo(() => {
     const c: Record<LibraryTab, number> = { all: 0, reading: 0, toRead: 0, finished: 0 }
@@ -62,6 +69,8 @@ export function BookCollection({ books, query }: { books: LibraryBook[]; query: 
     () => sortBooks(filterBooks(books, { tab, query, shelf }), sort),
     [books, tab, query, shelf, sort],
   )
+  const visibleIds = useMemo(() => visible.map((b) => b.fingerprint), [visible])
+  const selection = useBookSelection(visibleIds)
 
   const shelfItems: MenuEntry[] = [
     {
@@ -104,6 +113,22 @@ export function BookCollection({ books, query }: { books: LibraryBook[]; query: 
     setMenu({ book, anchor })
   }
 
+  // Ctrl/Cmd-click and Shift-click select (as in a file manager); while selecting, clicks do.
+  const onBookClick = (book: LibraryBook, e: MouseEvent<HTMLElement>) => {
+    if (selection.selecting || e.ctrlKey || e.metaKey || e.shiftKey) {
+      e.preventDefault()
+      selection.click(book.fingerprint, { range: e.shiftKey })
+    } else {
+      openBook(book, { from: e.currentTarget })
+    }
+  }
+
+  // The menu of a book that's part of a selection acts on the whole selection.
+  const menuBooks =
+    menu && selection.selected.length > 1 && selection.has(menu.book.fingerprint)
+      ? selection.selected
+      : null
+
   return (
     <section className={styles.books} aria-label="Your books">
       <div className={styles.booksBar}>
@@ -127,6 +152,11 @@ export function BookCollection({ books, query }: { books: LibraryBook[]; query: 
           </MenuButton>
         </div>
         <div className={styles.barActions}>
+          {!selection.selecting && visible.length > 0 && (
+            <button type="button" className={styles.dropdown} onClick={() => selection.start()}>
+              Select
+            </button>
+          )}
           <MenuButton
             label="Sort books"
             title="Sort books"
@@ -165,17 +195,23 @@ export function BookCollection({ books, query }: { books: LibraryBook[]; query: 
 
       {visible.length === 0 ? (
         <p className={styles.empty}>{emptyMessage(tab, query, shelf)}</p>
-      ) : layout === 'grid' ? (
-        <ul className={styles.grid}>
-          {visible.map((book) => (
-            <BookTile key={book.fingerprint} book={book} onMenu={openMenu} />
-          ))}
-        </ul>
       ) : (
-        <ul className={styles.list}>
-          {visible.map((book) => (
-            <BookRow key={book.fingerprint} book={book} onMenu={openMenu} />
-          ))}
+        <ul
+          className={layout === 'grid' ? styles.grid : styles.list}
+          data-selecting={selection.selecting || undefined}
+        >
+          {visible.map((book) => {
+            const Item = layout === 'grid' ? BookTile : BookRow
+            return (
+              <Item
+                key={book.fingerprint}
+                book={book}
+                selection={selection}
+                onClick={onBookClick}
+                onMenu={openMenu}
+              />
+            )
+          })}
         </ul>
       )}
 
@@ -183,27 +219,62 @@ export function BookCollection({ books, query }: { books: LibraryBook[]; query: 
         <Menu
           anchor={menu.anchor}
           align="end"
-          label={`Actions for ${menu.book.title}`}
-          items={bookMenuItems(menu.book, shelves, (fp) =>
-            setShelfDialog({ shelf: null, addBook: fp }),
-          )}
+          label={
+            menuBooks
+              ? `Actions for ${pluralize(menuBooks.length, 'book')}`
+              : `Actions for ${menu.book.title}`
+          }
+          items={
+            menuBooks
+              ? selectionMenuItems(menuBooks, books, shelves, {
+                  newShelf: () => setShelfDialog({ shelf: null, books: menuBooks }),
+                  done: selection.exit,
+                })
+              : bookMenuItems(menu.book, shelves, {
+                  newShelf: () => setShelfDialog({ shelf: null, books: [menu.book.fingerprint] }),
+                  select: () => selection.start(menu.book.fingerprint),
+                })
+          }
           onClose={() => setMenu(null)}
         />
       )}
       {shelfDialog && (
         <ShelfDialog
           shelf={shelfDialog.shelf}
-          addBook={shelfDialog.addBook}
+          books={shelfDialog.books}
+          onCreated={() => {
+            if ((shelfDialog.books?.length ?? 0) > 1) selection.exit()
+          }}
           onClose={() => setShelfDialog(null)}
         />
       )}
+      <AnimatePresence>
+        {selection.selecting && (
+          <SelectionBar
+            count={selection.selected.length}
+            total={visible.length}
+            onSelectAll={selection.selectAll}
+            onDone={selection.exit}
+            shelfItems={shelfMenuItems(selection.selected, shelves, {
+              newShelf: () => setShelfDialog({ shelf: null, books: selection.selected }),
+              done: selection.exit,
+            })}
+            statusItems={statusMenuItems(
+              selection.selected,
+              commonStatus(selection.selected, books),
+              selection.exit,
+            )}
+          />
+        )}
+      </AnimatePresence>
     </section>
   )
 }
 
 function emptyMessage(tab: LibraryTab, query: string, shelf: Shelf | null): string {
   if (query) return `No books match “${query}”.`
-  if (shelf) return `“${shelf.name}” is empty. Add books to it from their menu.`
+  if (shelf)
+    return `“${shelf.name}” is empty. Add books from their menu, or select several at once.`
   switch (tab) {
     case 'reading':
       return 'Nothing in progress. Open a book to start.'
@@ -218,16 +289,41 @@ function emptyMessage(tab: LibraryTab, query: string, shelf: Shelf | null): stri
 
 interface ItemProps {
   book: LibraryBook
+  selection: BookSelection
+  onClick: (book: LibraryBook, e: MouseEvent<HTMLElement>) => void
   onMenu: (book: LibraryBook, e: MouseEvent) => void
 }
 
-function BookTile({ book, onMenu }: ItemProps) {
+/** The round tick on a book: shows on hover, and on every book while selecting. */
+function SelectToggle({ book, selection }: Pick<ItemProps, 'book' | 'selection'>) {
+  const selected = selection.has(book.fingerprint)
   return (
-    <li className={styles.tile} onContextMenu={(e) => onMenu(book, e)}>
+    <button
+      type="button"
+      className={styles.selectToggle}
+      aria-label={`Select ${book.title}`}
+      aria-pressed={selected}
+      onClick={(e) => selection.click(book.fingerprint, { range: e.shiftKey })}
+    >
+      {selected && <Check size={15} strokeWidth={3} aria-hidden="true" />}
+    </button>
+  )
+}
+
+function BookTile({ book, selection, onClick, onMenu }: ItemProps) {
+  const selected = selection.selecting && selection.has(book.fingerprint)
+  return (
+    <li
+      className={styles.tile}
+      data-selected={selected || undefined}
+      onContextMenu={(e) => onMenu(book, e)}
+    >
+      <SelectToggle book={book} selection={selection} />
       <button
         type="button"
         className={styles.tileButton}
-        onClick={(e) => openBook(book, { from: e.currentTarget })}
+        aria-pressed={selection.selecting ? selected : undefined}
+        onClick={(e) => onClick(book, e)}
       >
         <Cover entry={book.entry} title={book.title} authors={book.authors} width={150} />
         <span className={styles.tileTitle} title={book.title}>
@@ -258,14 +354,20 @@ function BookTile({ book, onMenu }: ItemProps) {
   )
 }
 
-function BookRow({ book, onMenu }: ItemProps) {
+function BookRow({ book, selection, onClick, onMenu }: ItemProps) {
   const lastRead = book.lastReadAt ? formatDay(book.lastReadAt) : ''
+  const selected = selection.selecting && selection.has(book.fingerprint)
   return (
-    <li className={styles.row} onContextMenu={(e) => onMenu(book, e)}>
+    <li
+      className={styles.row}
+      data-selected={selected || undefined}
+      onContextMenu={(e) => onMenu(book, e)}
+    >
       <button
         type="button"
         className={styles.rowMain}
-        onClick={(e) => openBook(book, { from: e.currentTarget })}
+        aria-pressed={selection.selecting ? selected : undefined}
+        onClick={(e) => onClick(book, e)}
       >
         <Cover entry={book.entry} title={book.title} authors={book.authors} width={40} />
         <span>
@@ -297,23 +399,63 @@ function BookRow({ book, onMenu }: ItemProps) {
       >
         <MoreHorizontal size={18} aria-hidden="true" />
       </button>
+      {selection.selecting && <SelectToggle book={book} selection={selection} />}
     </li>
   )
+}
+
+interface MenuActions {
+  newShelf: () => void
+  /** Called once a change is saved (ends a selection). */
+  done?: () => void
+}
+
+function statusMenuItems(
+  fingerprints: string[],
+  status: ReadingStatus | null,
+  done?: () => void,
+): MenuEntry[] {
+  const entry = (s: ReadingStatus): MenuEntry => ({
+    id: s,
+    label: STATUS_LABELS[s],
+    checked: status === s,
+    onSelect: () => void setStatusOf(fingerprints, s).then((ok) => ok && done?.()),
+  })
+  return [entry('reading'), entry('toRead'), entry('finished')]
+}
+
+function shelfMenuItems(fingerprints: string[], shelves: Shelf[], actions: MenuActions) {
+  return [
+    ...shelves.map((shelf): MenuEntry => ({
+      id: `shelf-${shelf.id}`,
+      label: shelf.name,
+      checked: shelfHasAll(shelf, fingerprints),
+      onSelect: () => void toggleShelf(shelf, fingerprints).then((ok) => ok && actions.done?.()),
+    })),
+    ...(shelves.length ? [{ separator: true, id: 's-new-shelf' } as const] : []),
+    {
+      id: 'new-shelf',
+      label: fingerprints.length > 1 ? 'New shelf with these books…' : 'New shelf…',
+      onSelect: actions.newShelf,
+    },
+  ]
+}
+
+/** The status shared by all the books, if they have one in common. */
+function commonStatus(fingerprints: string[], books: LibraryBook[]): ReadingStatus | null {
+  const statuses = new Set(
+    books.filter((b) => fingerprints.includes(b.fingerprint)).map((b) => b.status),
+  )
+  const [only] = statuses
+  return statuses.size === 1 && only ? only : null
 }
 
 function bookMenuItems(
   book: LibraryBook,
   shelves: Shelf[],
-  newShelfWith: (fp: string) => void,
+  actions: MenuActions & { select: () => void },
 ): MenuEntry[] {
-  const { setStatus } = useLibrary.getState()
   const navigate = useApp.getState().navigate
-  const status = (s: ReadingStatus): MenuEntry => ({
-    id: s,
-    label: STATUS_LABELS[s],
-    checked: book.status === s,
-    onSelect: () => setStatus(book.fingerprint, s).catch((e) => showError(toAppError(e).message)),
-  })
   return [
     { id: 'open', label: 'Open', onSelect: () => openBook(book) },
     ...(book.highlights.length
@@ -326,57 +468,42 @@ function bookMenuItems(
         ]
       : []),
     { id: 'reveal', label: 'Show in folder', onSelect: () => void revealBook(book.fingerprint) },
+    { id: 'select', label: 'Select', onSelect: actions.select },
     { separator: true, id: 's1' },
-    { heading: 'Mark as', id: 'h1' },
-    status('reading'),
-    status('toRead'),
-    status('finished'),
+    { heading: 'Mark as', id: 'h-status' },
+    ...statusMenuItems([book.fingerprint], book.status),
     { separator: true, id: 's2' },
-    { heading: 'Shelves', id: 'h2' },
-    ...shelves.map((shelf) => {
-      const on = shelf.books.includes(book.fingerprint)
-      return {
-        id: `shelf-${shelf.id}`,
-        label: shelf.name,
-        checked: on,
-        onSelect: () =>
-          void saveShelf({
-            id: shelf.id,
-            name: shelf.name,
-            books: on
-              ? shelf.books.filter((b) => b !== book.fingerprint)
-              : [...shelf.books, book.fingerprint],
-          }),
-      }
-    }),
-    { id: 'new-shelf', label: 'New shelf…', onSelect: () => newShelfWith(book.fingerprint) },
+    { heading: 'Shelves', id: 'h-shelves' },
+    ...shelfMenuItems([book.fingerprint], shelves, actions),
   ]
 }
 
-async function saveShelf(shelf: { id: string; name: string; books: string[] }) {
-  try {
-    useLibrary.getState().setShelves(await api.putShelf(shelf))
-  } catch (e) {
-    showError(toAppError(e).message)
-  }
+/** The menu for several selected books. */
+function selectionMenuItems(
+  fingerprints: string[],
+  books: LibraryBook[],
+  shelves: Shelf[],
+  actions: Required<MenuActions>,
+): MenuEntry[] {
+  return [
+    { heading: 'Mark as', id: 'h-status' },
+    ...statusMenuItems(fingerprints, commonStatus(fingerprints, books), actions.done),
+    { separator: true, id: 's2' },
+    { heading: 'Shelves', id: 'h-shelves' },
+    ...shelfMenuItems(fingerprints, shelves, actions),
+  ]
 }
 
-async function deleteShelf(shelf: Shelf) {
-  try {
-    useLibrary.getState().setShelves(await api.deleteShelf(shelf.id))
-    usePreferences.getState().update({ library: { shelf: null } })
-  } catch (e) {
-    showError(toAppError(e).message)
-  }
-}
-
+/** Renames `shelf`, or creates a shelf holding `books`. */
 function ShelfDialog({
   shelf,
-  addBook,
+  books,
+  onCreated,
   onClose,
 }: {
   shelf: Shelf | null
-  addBook?: string
+  books?: string[]
+  onCreated: () => void
   onClose: () => void
 }) {
   const [name, setName] = useState(shelf?.name ?? '')
@@ -384,10 +511,18 @@ function ShelfDialog({
   const submit = async () => {
     if (!valid) return
     const id = shelf?.id ?? newId()
-    const books = shelf?.books ?? (addBook ? [addBook] : [])
-    await saveShelf({ id, name: name.trim(), books })
-    if (!shelf && !addBook) usePreferences.getState().update({ library: { shelf: id } })
+    const trimmed = name.trim()
+    const saved = await saveShelf({ id, name: trimmed, books: shelf?.books ?? books ?? [] })
+    if (!saved) return
     onClose()
+    if (shelf) return
+    onCreated()
+    const count = books?.length ?? 0
+    // An empty shelf, or one made from a selection, opens so you can see what's on it.
+    if (count !== 1) usePreferences.getState().update({ library: { shelf: id } })
+    if (count > 1) {
+      useToasts.getState().show({ message: `Put ${pluralize(count, 'book')} on “${trimmed}”` })
+    }
   }
   return (
     <Dialog

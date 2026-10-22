@@ -375,6 +375,7 @@
 }
 
 .tile {
+  position: relative;
   width: 150px;
 }
 
@@ -396,6 +397,148 @@
 
 .tileButton:hover > :first-child {
   transform: translateY(-3px);
+}
+
+/* -- Selecting ------------------------------------------------------------------------------ */
+
+.selectToggle {
+  position: absolute;
+  z-index: 1;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 2px solid rgba(255, 255, 255, 0.95);
+  border-radius: var(--radius-pill);
+  background: rgba(20, 18, 26, 0.3);
+  color: #fff;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.3);
+  opacity: 0;
+  transition:
+    opacity var(--duration) var(--ease-out),
+    background-color var(--duration) var(--ease-out);
+}
+
+.tile:hover .selectToggle,
+.selectToggle:focus-visible,
+[data-selecting] .selectToggle {
+  opacity: 1;
+}
+
+.selectToggle:hover {
+  background: rgba(20, 18, 26, 0.5);
+}
+
+.selectToggle[aria-pressed='true'] {
+  background: var(--accent);
+}
+
+.tile[data-selected] .tileButton > :first-child {
+  box-shadow:
+    0 0 0 3px var(--fog),
+    0 0 0 6px var(--accent),
+    var(--cover-shadow);
+  transform: scale(0.96);
+}
+
+.row[data-selected] {
+  background: var(--hover);
+}
+
+/* While selecting, list rows gain a tick at the start. */
+.list[data-selecting] .row {
+  grid-template-columns: 28px auto minmax(0, 1fr) 160px 120px 44px;
+}
+
+.list[data-selecting] .rowMain {
+  grid-column: 2 / 4;
+}
+
+.row .selectToggle {
+  position: static;
+  grid-column: 1;
+  grid-row: 1;
+  border-color: var(--haze);
+  background: transparent;
+  color: var(--btn-ink);
+  box-shadow: none;
+}
+
+.row .selectToggle[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.selectionBar {
+  position: fixed;
+  z-index: 30;
+  left: 50%;
+  bottom: 28px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: calc(min(560px, 100vw - 32px) / -2);
+  width: min(560px, calc(100vw - 32px));
+  padding: 6px 6px 6px 22px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--glass-edge);
+  background: var(--pop-bg);
+  box-shadow: var(--glass-shadow);
+}
+
+.selectionCount {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 14.5px;
+  font-weight: 600;
+}
+
+.selectionAction,
+.selectionQuiet {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 44px;
+  padding: 0 14px;
+  border: none;
+  border-radius: var(--radius-pill);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.selectionAction {
+  background: var(--btn-bg);
+  color: var(--btn-ink);
+}
+
+.selectionAction:disabled {
+  opacity: 0.45;
+}
+
+.selectionQuiet {
+  background: transparent;
+}
+
+.selectionAction:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.selectionQuiet:hover {
+  background: var(--hover);
+}
+
+/* Room to scroll the last books out from under the selection bar. */
+.grid[data-selecting],
+.list[data-selecting] {
+  padding-bottom: 80px;
 }
 
 .tileTitle {
@@ -566,6 +709,9 @@
   }
   .row {
     grid-template-columns: auto minmax(0, 1fr) 44px;
+  }
+  .list[data-selecting] .row {
+    grid-template-columns: 28px auto minmax(0, 1fr) 44px;
   }
   .row > :nth-child(2),
   .row > :nth-child(3) {

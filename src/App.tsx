@@ -6,6 +6,7 @@ import { Dialog } from './components/Dialog'
 import { Toasts } from './components/Toasts'
 import { HighlightsView } from './highlights/HighlightsView'
 import { api, events, subscribeAll, toAppError } from './lib/ipc'
+import { handleWindowShortcut } from './lib/window'
 import { addBookFiles } from './library/actions'
 import { indexPendingBooks } from './library/indexer'
 import { LibraryView } from './library/LibraryView'
@@ -29,6 +30,12 @@ export function App() {
 
   useEffect(() => {
     void useApp.getState().init()
+  }, [])
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => void handleWindowShortcut(e)
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
 
   if (status === 'loading') return <div className={styles.splash} />
@@ -100,10 +107,6 @@ function Shell({ libraryRoot }: { libraryRoot: string }) {
         <motion.div
           key={view.name === 'reader' ? `reader-${view.fingerprint}` : view.name}
           className={styles.view}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.18 }}
         >
           {view.name === 'library' && <LibraryView />}
           {view.name === 'highlights' && <HighlightsView initialBook={view.book} />}
@@ -115,6 +118,16 @@ function Shell({ libraryRoot }: { libraryRoot: string }) {
               readAloud={view.readAloud}
             />
           )}
+          {/* Views cross-fade through the background colour. A curtain fades rather than the view
+              itself, because frosted glass inside a fading element pops when the fade ends. */}
+          <motion.div
+            className={styles.curtain}
+            aria-hidden="true"
+            initial={{ opacity: 1 }}
+            animate={{ opacity: 0 }}
+            exit={{ opacity: 1 }}
+            transition={{ duration: 0.18 }}
+          />
         </motion.div>
       </AnimatePresence>
       <OpeningCoverLayer />

@@ -1,5 +1,5 @@
 # Checks every push and pull request: types, lint, formatting and tests for the UI and the Rust
-# core. Pushes to main also build the Linux packages.
+# core. Pushes to main also build the Linux packages and publish them as a pre-release.
 name: CI
 
 on:
@@ -64,6 +64,8 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: check
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
@@ -90,12 +92,17 @@ jobs:
       - name: Build packages
         run: bun run tauri build --bundles deb,rpm
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: readlet-linux
-          path: |
-            src-tauri/target/release/bundle/deb/*.deb
+      # A rolling pre-release rather than workflow artifacts: release files don't count against the
+      # account's Actions storage quota.
+      - name: Publish the packages as the "main-build" pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view main-build > /dev/null 2>&1; then
+            gh release delete main-build --cleanup-tag --yes
+          fi
+          gh release create main-build --prerelease --target "$GITHUB_SHA" \
+            --title "Latest build from main" \
+            --notes "Built from $GITHUB_SHA. Replaced on every push to main." \
+            src-tauri/target/release/bundle/deb/*.deb \
             src-tauri/target/release/bundle/rpm/*.rpm
-          if-no-files-found: error
-          # Artifacts count against the account's Actions storage quota; keep them briefly.
-          retention-days: 7

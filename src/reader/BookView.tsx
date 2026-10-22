@@ -83,6 +83,20 @@ interface BookViewProps {
 /** Wheel distance that turns a page in paginated mode, and the pause before the next turn. */
 const WHEEL_THRESHOLD = 60
 const WHEEL_COOLDOWN_MS = 450
+/** Clicks this close to the window's sides turn pages even over text (for narrow windows). */
+const EDGE_TAP_PX = 56
+/** Where a tap turns the page when the text area is unknown (fixed layouts): the outer 22%. */
+const EDGE_TAP_FRACTION = 0.22
+
+/**
+ * The box the text is laid out in. foliate's paginator puts each page's iframe in a `#container`
+ * inside its (closed) shadow root; the iframe's ancestors lead there. Fixed layouts have none.
+ */
+function textAreaOf(doc: Document): Element | null {
+  let el = doc.defaultView?.frameElement?.parentElement ?? null
+  while (el && el.id !== 'container') el = el.parentElement
+  return el
+}
 
 function applyLayout(view: View, layout: BookLayout) {
   const r = view.renderer
@@ -190,6 +204,7 @@ export function BookView(props: BookViewProps) {
 
     let cancelled = false
     let highlightClicked = false
+    let textArea: Element | null = null
     let lastLinkRect = new DOMRect()
     let wheelDelta = 0
     let wheelLockedUntil = 0
@@ -208,7 +223,27 @@ export function BookView(props: BookViewProps) {
       }
     }
 
+    // Pages turn from the margins beside the text; a click on the text itself shows the chrome.
+    const zoneAt = (x: number): TapZone => {
+      const box = host.getBoundingClientRect()
+      const text = textArea?.isConnected ? textArea.getBoundingClientRect() : null
+      const left = text
+        ? Math.max(text.left, box.left + EDGE_TAP_PX)
+        : box.left + box.width * EDGE_TAP_FRACTION
+      const right = text
+        ? Math.min(text.right, box.right - EDGE_TAP_PX)
+        : box.right - box.width * EDGE_TAP_FRACTION
+      return x < left ? 'left' : x > right ? 'right' : 'center'
+    }
+
+    // Clicks in the margins land on the view itself, outside the page's iframe.
+    const onHostClick = (e: MouseEvent) => {
+      callbacks.current.onActivity()
+      callbacks.current.onTap(zoneAt(e.clientX))
+    }
+
     const attachToPage = (doc: Document, index: number) => {
+      textArea = textAreaOf(doc) ?? textArea
       const reportSelection = () => {
         const selection = doc.getSelection()
         if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
@@ -249,15 +284,13 @@ export function BookView(props: BookViewProps) {
         if (!doc.getSelection()?.isCollapsed) return
         const frame = doc.defaultView?.frameElement?.getBoundingClientRect()
         const x = e.clientX + (frame?.left ?? 0)
-        const box = host.getBoundingClientRect()
         // foliate reports highlight clicks from its own listener, after this one.
         setTimeout(() => {
           if (highlightClicked) {
             highlightClicked = false
             return
           }
-          const at = (x - box.left) / box.width
-          callbacks.current.onTap(at < 0.22 ? 'left' : at > 0.78 ? 'right' : 'center')
+          callbacks.current.onTap(zoneAt(x))
         }, 0)
       })
     }
@@ -323,6 +356,7 @@ export function BookView(props: BookViewProps) {
     }) as EventListener)
 
     host.addEventListener('wheel', onWheel, { passive: true })
+    host.addEventListener('click', onHostClick)
 
     ;(async () => {
       await view.open(book)
@@ -343,6 +377,7 @@ export function BookView(props: BookViewProps) {
     return () => {
       cancelled = true
       host.removeEventListener('wheel', onWheel)
+      host.removeEventListener('click', onHostClick)
       view.close()
       view.remove()
       viewRef.current = null
