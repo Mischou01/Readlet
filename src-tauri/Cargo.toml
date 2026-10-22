@@ -1,0 +1,48 @@
+[package]
+name = "readlet"
+version = "0.1.0"
+description = "A calm desktop e-reader with reading stats, a highlights hub and read-aloud"
+authors = ["Mischou"]
+license = "GPL-3.0-or-later"
+repository = "https://github.com/Mischou01/Readlet"
+edition = "2024"
+rust-version = "1.88"
+
+[lib]
+# The `_lib` suffix avoids a name clash with the binary on Windows (cargo#8519).
+name = "readlet_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.7", features = [] }
+
+[dependencies]
+tauri = { version = "2.12", features = [] }
+tauri-plugin-dialog = "2.8"
+tauri-plugin-opener = "2.7"
+tauri-plugin-log = "2"
+log = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+rusqlite = { version = "0.40", features = ["bundled"] }
+notify = "8"
+notify-debouncer-full = "0.7"
+blake3 = "1.8"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif", "bmp"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
+uuid = { version = "1", features = ["v4"] }
+walkdir = "2"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+ssip-client = "0.10"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+strip = true
+panic = "abort"

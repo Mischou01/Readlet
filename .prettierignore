@@ -1,0 +1,6 @@
+dist
+node_modules
+src-tauri
+vendor
+bun.lock
+docs/PLAN.md

@@ -1,0 +1,61 @@
+.page {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  overflow: hidden;
+  padding: 24px;
+}
+
+.close {
+  position: absolute;
+  top: 14px;
+  right: 20px;
+  z-index: 2;
+}
+
+.card {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  max-width: 520px;
+  padding: 44px 48px 40px;
+  border-radius: var(--radius-sheet);
+  border: 1px solid var(--glass-edge);
+  background: var(--glass);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  box-shadow: var(--glass-shadow);
+  text-align: center;
+}
+
+.card h1 {
+  font-family: var(--font-reading);
+  font-size: 38px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.card p {
+  font-size: 16.5px;
+  line-height: 1.55;
+  color: var(--haze);
+}
+
+.card strong {
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.note {
+  margin-top: 6px;
+  font-size: 13.5px !important;
+}
+
+.note code {
+  font-size: 0.95em;
+}

@@ -1,0 +1,75 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Readlet",
+  "version": "0.1.0",
+  "identifier": "io.github.mischou01.readlet",
+  "build": {
+    "beforeDevCommand": "bun run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "bun run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Readlet",
+        "width": 1280,
+        "height": 860,
+        "minWidth": 720,
+        "minHeight": 560,
+        "center": true,
+        "decorations": false,
+        "dragDropEnabled": true
+      }
+    ],
+    "security": {
+      "csp": {
+        "default-src": "'self'",
+        "script-src": "'self'",
+        "style-src": "'self' 'unsafe-inline'",
+        "img-src": "'self' data: blob: cover: http://cover.localhost",
+        "font-src": "'self' data:",
+        "connect-src": "'self' ipc: http://ipc.localhost book: http://book.localhost https://en.wiktionary.org",
+        "frame-src": "'self' blob:",
+        "worker-src": "'self' blob:",
+        "media-src": "'self' blob:",
+        "object-src": "'none'",
+        "base-uri": "'self'",
+        "form-action": "'none'"
+      },
+      "devCsp": {
+        "default-src": "'self'",
+        "script-src": "'self' 'unsafe-inline'",
+        "style-src": "'self' 'unsafe-inline'",
+        "img-src": "'self' data: blob: cover: http://cover.localhost",
+        "font-src": "'self' data:",
+        "connect-src": "'self' ipc: http://ipc.localhost book: http://book.localhost https://en.wiktionary.org ws://localhost:1420",
+        "frame-src": "'self' blob:",
+        "worker-src": "'self' blob:",
+        "media-src": "'self' blob:",
+        "object-src": "'none'"
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["deb", "rpm", "appimage"],
+    "category": "Education",
+    "shortDescription": "A calm e-reader",
+    "longDescription": "Readlet opens the books you already have, from a folder you already have, and keeps your reading progress, highlights and stats next to them.",
+    "copyright": "Copyright © 2026 Mischou. Licensed under GPL-3.0-or-later.",
+    "license": "GPL-3.0-or-later",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "linux": {
+      "rpm": { "depends": ["speech-dispatcher"] },
+      "deb": { "depends": ["speech-dispatcher"] }
+    }
+  }
+}

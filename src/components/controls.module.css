@@ -1,0 +1,127 @@
+/* Buttons and small controls shared across views (sizes and materials from the mockups). */
+
+.iconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--ink);
+  transition: background-color var(--duration) var(--ease-out);
+}
+
+.iconButton:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.iconButton:disabled {
+  opacity: 0.4;
+}
+
+.iconButton[aria-pressed='true'] {
+  background: var(--glass-strong);
+}
+
+.glass {
+  border: 1px solid var(--glass-edge);
+  background: var(--glass);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  box-shadow: var(--glass-shadow-sm);
+}
+
+.glass.iconButton:hover:not(:disabled) {
+  background: var(--glass-strong);
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 48px;
+  padding: 0 24px 0 20px;
+  border: none;
+  border-radius: var(--radius-pill);
+  font-size: 15.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition:
+    background-color var(--duration) var(--ease-out),
+    transform var(--duration) var(--ease-out);
+}
+
+.button:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.button:disabled {
+  opacity: 0.5;
+}
+
+.small {
+  height: 40px;
+  padding: 0 16px;
+  font-size: 14px;
+  gap: 8px;
+}
+
+.primary {
+  background: var(--btn-bg);
+  color: var(--btn-ink);
+  box-shadow: var(--btn-shadow);
+}
+
+.secondary {
+  color: var(--ink);
+}
+
+.secondary:hover:not(:disabled) {
+  background: var(--glass-strong);
+}
+
+.quiet {
+  background: transparent;
+  color: var(--ink);
+  padding: 0 14px;
+}
+
+.quiet:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.danger {
+  background: transparent;
+  color: #b0384f;
+}
+
+:global([data-theme='dark']) .danger {
+  color: #f0a3b2;
+}
+
+.danger:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-pill);
+  background: var(--track);
+}
+
+.divider {
+  flex: none;
+  width: 1px;
+  height: 22px;
+  margin: 0 6px;
+  background: var(--line);
+}

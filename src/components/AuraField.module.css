@@ -1,0 +1,127 @@
+.field {
+  position: absolute;
+  pointer-events: none;
+  opacity: var(--aura-opacity);
+  z-index: 0;
+}
+
+.blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  transition: background-color 1.4s var(--ease-out);
+  animation: drift 38s ease-in-out infinite alternate;
+}
+
+.blob:nth-child(1) {
+  background: var(--aura-1);
+}
+.blob:nth-child(2) {
+  background: var(--aura-2);
+  animation-duration: 46s;
+  animation-delay: -12s;
+}
+.blob:nth-child(3) {
+  background: var(--aura-3);
+  animation-duration: 52s;
+  animation-delay: -24s;
+}
+
+/* Library: a wide field across the top. */
+.top {
+  left: -12%;
+  top: -240px;
+  width: 125%;
+  height: 900px;
+}
+.top .blob:nth-child(1) {
+  left: 0;
+  top: 40px;
+  width: 40%;
+  height: 600px;
+}
+.top .blob:nth-child(2) {
+  left: 33%;
+  top: 120px;
+  width: 36%;
+  height: 520px;
+}
+.top .blob:nth-child(3) {
+  left: 62%;
+  top: 0;
+  width: 34%;
+  height: 560px;
+}
+
+/* Highlights: tucked into the top right corner. */
+.corner {
+  right: -200px;
+  top: -260px;
+  width: 1300px;
+  height: 760px;
+  opacity: calc(var(--aura-opacity) * 0.85);
+}
+.corner .blob:nth-child(1) {
+  left: 0;
+  top: 80px;
+  width: 560px;
+  height: 480px;
+}
+.corner .blob:nth-child(2) {
+  left: 420px;
+  top: 0;
+  width: 560px;
+  height: 520px;
+}
+.corner .blob:nth-child(3) {
+  left: 820px;
+  top: 140px;
+  width: 480px;
+  height: 440px;
+}
+
+/* Read-aloud: rising from the bottom edge. */
+.bottom {
+  left: 50%;
+  bottom: -260px;
+  width: 1100px;
+  height: 420px;
+  margin-left: -550px;
+  opacity: 0.55;
+}
+.bottom .blob {
+  filter: blur(80px);
+}
+.bottom .blob:nth-child(1) {
+  left: 0;
+  top: 60px;
+  width: 520px;
+  height: 360px;
+}
+.bottom .blob:nth-child(2) {
+  left: 330px;
+  top: 0;
+  width: 460px;
+  height: 360px;
+}
+.bottom .blob:nth-child(3) {
+  left: 600px;
+  top: 60px;
+  width: 500px;
+  height: 360px;
+}
+
+@keyframes drift {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(4%, 3%, 0) scale(1.08);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .blob {
+    animation: none;
+  }
+}

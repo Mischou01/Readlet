@@ -1,0 +1,120 @@
+// Typed wrappers around the Rust commands and events. Nothing else calls `invoke` directly.
+
+import { invoke } from '@tauri-apps/api/core'
+import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import type {
+  AppError,
+  AppInfo,
+  BookEntry,
+  BookMetadata,
+  BookRecord,
+  Profile,
+  Resurfaced,
+  ScanReport,
+  Session,
+  Shelf,
+  StoreChanges,
+  YearlyGoal,
+} from './types'
+
+export interface AnnotationInput {
+  id: string
+  kind: 'highlight' | 'bookmark'
+  cfi: string
+  text: string
+  color?: string
+  note?: string
+  chapter?: string
+  fraction?: number
+}
+
+export interface ProgressInput {
+  cfi: string
+  fraction: number
+  label?: string
+}
+
+export interface ExportFile {
+  name: string
+  content: string
+}
+
+export const api = {
+  getAppInfo: () => invoke<AppInfo>('get_app_info'),
+  setPreferences: (preferences: object) => invoke<void>('set_preferences', { preferences }),
+
+  chooseLibrary: (path: string) => invoke<AppInfo>('choose_library', { path }),
+  rescanLibrary: () => invoke<void>('rescan_library'),
+  listBooks: () => invoke<BookEntry[]>('list_books'),
+  booksNeedingMetadata: () => invoke<string[]>('books_needing_metadata'),
+  setBookMetadata: (fingerprint: string, metadata: BookMetadata, error?: string) =>
+    invoke<BookEntry>('set_book_metadata', { fingerprint, metadata, error: error ?? null }),
+  /** An empty `bytes` means the book has no cover. */
+  setBookCover: (fingerprint: string, bytes: Uint8Array) =>
+    invoke<BookEntry>('set_book_cover', bytes, { headers: { 'x-fingerprint': fingerprint } }),
+  addBooks: (paths: string[]) => invoke<string[]>('add_books', { paths }),
+  revealBook: (fingerprint: string) => invoke<void>('reveal_book', { fingerprint }),
+
+  listRecords: () => invoke<BookRecord[]>('list_records'),
+  getRecord: (fingerprint: string) => invoke<BookRecord>('get_record', { fingerprint }),
+  setProgress: (fingerprint: string, progress: ProgressInput) =>
+    invoke<BookRecord>('set_progress', { fingerprint, progress }),
+  setStatus: (fingerprint: string, status: string) =>
+    invoke<BookRecord>('set_status', { fingerprint, status }),
+  putAnnotation: (fingerprint: string, annotation: AnnotationInput) =>
+    invoke<BookRecord>('put_annotation', { fingerprint, annotation }),
+  deleteAnnotation: (fingerprint: string, id: string) =>
+    invoke<BookRecord>('delete_annotation', { fingerprint, id }),
+
+  listSessions: (since: number) => invoke<Session[]>('list_sessions', { since }),
+  checkpointSession: (session: Session) => invoke<void>('checkpoint_session', { session }),
+  finishSession: (session: Session) => invoke<void>('finish_session', { session }),
+  getProfile: () => invoke<Profile>('get_profile'),
+  setDailyGoal: (minutes: number) => invoke<Profile>('set_daily_goal', { minutes }),
+  setYearlyGoal: (goal: YearlyGoal) => invoke<Profile>('set_yearly_goal', { goal }),
+
+  listShelves: () => invoke<Shelf[]>('list_shelves'),
+  putShelf: (shelf: { id: string; name: string; books: string[] }) =>
+    invoke<Shelf[]>('put_shelf', { shelf }),
+  deleteShelf: (id: string) => invoke<Shelf[]>('delete_shelf', { id }),
+
+  listResurfaced: () => invoke<Resurfaced[]>('list_resurfaced'),
+  logResurfaced: (entries: Resurfaced[]) => invoke<void>('log_resurfaced', { entries }),
+
+  exportMarkdown: (dir: string, files: ExportFile[]) =>
+    invoke<number>('export_markdown', { dir, files }),
+}
+
+export const events = {
+  onLibraryChanged: (handler: (report: ScanReport) => void): Promise<UnlistenFn> =>
+    listen<ScanReport>('library:changed', (e) => handler(e.payload)),
+  onScanFailed: (handler: (error: AppError) => void): Promise<UnlistenFn> =>
+    listen<AppError>('library:scan-failed', (e) => handler(e.payload)),
+  onStoreChanged: (handler: (changes: StoreChanges) => void): Promise<UnlistenFn> =>
+    listen<StoreChanges>('store:changed', (e) => handler(e.payload)),
+}
+
+/** Normalises anything thrown by a command (or by JS) into `{ kind, message }`. */
+export function toAppError(error: unknown): AppError {
+  if (error && typeof error === 'object' && 'kind' in error && 'message' in error) {
+    return { kind: String(error.kind), message: String(error.message) }
+  }
+  if (error instanceof Error) return { kind: 'internal', message: error.message }
+  return { kind: 'internal', message: String(error) }
+}
+
+/** Subscribes to several events and returns one function that unsubscribes from all of them. */
+export function subscribeAll(subscriptions: Promise<UnlistenFn>[]): () => void {
+  let disposed = false
+  const unlisteners: UnlistenFn[] = []
+  for (const sub of subscriptions) {
+    sub.then(
+      (unlisten) => (disposed ? unlisten() : unlisteners.push(unlisten)),
+      (e) => console.error('event subscription failed', e),
+    )
+  }
+  return () => {
+    disposed = true
+    for (const unlisten of unlisteners.splice(0)) unlisten()
+  }
+}
