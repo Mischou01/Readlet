@@ -71,12 +71,19 @@ mod speaker {
         }
     }
 
+    /// Where Speech Dispatcher listens: `SPEECHD_ADDRESS`, else its default socket in the
+    /// user's runtime directory. Like GLib's `g_get_user_runtime_dir()`, which the server uses,
+    /// this falls back to the cache directory when `XDG_RUNTIME_DIR` isn't set.
     fn socket_path() -> Option<PathBuf> {
         if let Ok(address) = std::env::var("SPEECHD_ADDRESS") {
             return address.strip_prefix("unix_socket:").map(PathBuf::from);
         }
-        let runtime = std::env::var_os("XDG_RUNTIME_DIR")?;
-        Some(PathBuf::from(runtime).join("speech-dispatcher/speechd.sock"))
+        let non_empty = |name: &str| std::env::var_os(name).filter(|v| !v.is_empty());
+        let runtime = non_empty("XDG_RUNTIME_DIR")
+            .map(PathBuf::from)
+            .or_else(|| non_empty("XDG_CACHE_HOME").map(PathBuf::from))
+            .or_else(|| non_empty("HOME").map(|home| PathBuf::from(home).join(".cache")))?;
+        Some(runtime.join("speech-dispatcher/speechd.sock"))
     }
 
     /// Starts Speech Dispatcher in autospawn mode (a no-op if it's already running).
@@ -102,7 +109,8 @@ mod speaker {
         }
 
         fn connect<R: Runtime>(app: &AppHandle<R>) -> Result<Connection> {
-            let path = socket_path().ok_or_else(|| Error::Tts("no runtime directory".into()))?;
+            let path = socket_path()
+                .ok_or_else(|| Error::Tts("couldn’t find the Speech Dispatcher socket".into()))?;
             let handle = app.clone();
             let on_event = move |event: super::ssip::Event| {
                 let (kind, mark) = match event.kind {

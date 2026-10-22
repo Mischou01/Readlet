@@ -611,6 +611,8 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
             onReady={(info) => {
               setFixedLayout(info.fixedLayout)
               setReady(true)
+              // "Read aloud" in the library opens the book already speaking.
+              if (startReadingAloud) readAloud.start()
             }}
             onError={(e) =>
               setOpen({

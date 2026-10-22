@@ -26,6 +26,11 @@ interface ReadAloudBarProps {
   minutesLeft: number | null
 }
 
+/** "1×", "1.2×", "1.75×". */
+function formatSpeed(speed: number): string {
+  return `${Number(speed.toFixed(2))}×`
+}
+
 /** The read-aloud controls (ReadAloud mockup): chapter, transport, speed, voice and sleep timer. */
 export function ReadAloudBar({ readAloud, entry, title, chapter, minutesLeft }: ReadAloudBarProps) {
   const { status, speed, voice, voices } = readAloud
@@ -105,10 +110,10 @@ export function ReadAloudBar({ readAloud, entry, title, chapter, minutesLeft }: 
       <button
         type="button"
         className={styles.speed}
-        aria-label={`Speed ${speed.toFixed(1)}×, change speed`}
+        aria-label={`Speed ${formatSpeed(speed)}, change speed`}
         onClick={readAloud.cycleSpeed}
       >
-        {speed.toFixed(speed % 1 === 0 ? 1 : 2).replace(/0$/, '')}×
+        {formatSpeed(speed)}
       </button>
       <MenuButton label="Voice" items={voiceItems} className={styles.text} align="end">
         <span className={styles.avatar} aria-hidden="true">
