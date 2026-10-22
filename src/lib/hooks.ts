@@ -59,3 +59,19 @@ export function useToday(): Date {
   }, [today])
   return today
 }
+
+export interface Debounced<A extends unknown[]> {
+  (...args: A): void
+  cancel: () => void
+}
+
+/** A stable debounced callback that always calls the latest `fn`. */
+export function useDebouncedCallback<A extends unknown[]>(
+  fn: (...args: A) => void,
+  delay: number,
+): Debounced<A> {
+  const latest = useLatest(fn)
+  const [debounced] = useState(() => debounce((...args: A) => latest.current(...args), delay))
+  useEffect(() => debounced.cancel, [debounced])
+  return debounced
+}

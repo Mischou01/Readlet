@@ -1,0 +1,145 @@
+.bar {
+  position: absolute;
+  z-index: 10;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - 32px);
+  height: 76px;
+  padding: 0 12px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--glass-edge);
+  background: var(--glass);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  box-shadow: var(--glass-shadow);
+  white-space: nowrap;
+}
+
+.where {
+  display: flex;
+  flex-direction: column;
+  min-width: 150px;
+  max-width: 220px;
+  margin: 0 14px 0 8px;
+}
+
+.chapter {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 14.5px;
+  font-weight: 600;
+}
+
+.left {
+  font-size: 13px;
+  color: var(--haze);
+}
+
+.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+}
+
+.icon:hover,
+.text:hover {
+  background: var(--hover);
+}
+
+.play {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 54px;
+  height: 54px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--ink);
+  color: var(--fog);
+  box-shadow: 0 8px 20px -8px rgba(0, 0, 0, 0.6);
+}
+
+.play:disabled {
+  opacity: 0.6;
+}
+
+.divider {
+  flex: none;
+  width: 1px;
+  height: 28px;
+  margin: 0 8px;
+  background: var(--line);
+}
+
+.speed {
+  height: 44px;
+  min-width: 64px;
+  padding: 0 12px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--hover);
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.text {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 12px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  font-size: 14px;
+  font-weight: 550;
+}
+
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.voiceName {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.message {
+  max-width: 560px;
+  padding: 0 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: normal;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+@media (max-width: 1100px) {
+  .voiceName,
+  .where {
+    display: none;
+  }
+}

@@ -65,14 +65,32 @@ export function accentColor(palette: Palette, scheme: ColorScheme): string {
   return scheme === 'dark' ? palette.accentDark : palette.accent
 }
 
+/**
+ * A view can take over the chrome's colours (the reader does, so sheets and popovers match the
+ * reading theme) by setting CSS variables on `<html>` while it's shown.
+ */
+export interface ThemeOverride {
+  scheme: ColorScheme
+  vars: Record<string, string>
+}
+
+export const useThemeOverride = create<{ override: ThemeOverride | null }>(() => ({
+  override: null,
+}))
+
+let overriddenVars: string[] = []
+
 /** Keeps `<html>`'s theme attributes and colour variables in sync with the state. */
 export function useDocumentTheme() {
   const scheme = useColorScheme()
   const reduceTransparency = usePreferences((s) => s.prefs.reduceTransparency)
   const palette = useAura((s) => s.palette)
+  const override = useThemeOverride((s) => s.override)
 
   useEffect(() => {
     const root = document.documentElement
+    for (const name of overriddenVars) root.style.removeProperty(name)
+    overriddenVars = []
     root.dataset.theme = scheme
     root.dataset.transparency = reduceTransparency ? 'reduced' : 'full'
     const [a, b, c] = auraColors(palette, scheme)
@@ -80,5 +98,12 @@ export function useDocumentTheme() {
     root.style.setProperty('--aura-2', b)
     root.style.setProperty('--aura-3', c)
     root.style.setProperty('--accent', accentColor(palette, scheme))
-  }, [scheme, reduceTransparency, palette])
+    if (override) {
+      root.dataset.theme = override.scheme
+      for (const [name, value] of Object.entries(override.vars)) {
+        root.style.setProperty(name, value)
+        overriddenVars.push(name)
+      }
+    }
+  }, [scheme, reduceTransparency, palette, override])
 }

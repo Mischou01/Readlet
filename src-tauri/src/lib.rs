@@ -12,6 +12,7 @@ mod protocol;
 mod settings;
 mod state;
 mod store;
+mod tts;
 
 use tauri::Manager;
 use tauri_plugin_log::{Target, TargetKind};
@@ -39,6 +40,7 @@ pub fn run() {
             let state = AppState::new(AppPaths::resolve(handle)?)?;
             let root = state.settings().library_root.clone();
             app.manage(state);
+            app.manage(tts::Speaker::new());
             if let Some(root) = root {
                 // A missing folder (an unmounted drive, say) isn't fatal: the UI asks again.
                 if let Err(e) = app.state::<AppState>().open_library(handle, &root) {
@@ -76,6 +78,11 @@ pub fn run() {
             commands::list_resurfaced,
             commands::log_resurfaced,
             commands::export_markdown,
+            tts::tts_voices,
+            tts::tts_speak,
+            tts::tts_pause,
+            tts::tts_resume,
+            tts::tts_stop,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Readlet");

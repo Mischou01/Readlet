@@ -83,6 +83,26 @@ export const api = {
 
   exportMarkdown: (dir: string, files: ExportFile[]) =>
     invoke<number>('export_markdown', { dir, files }),
+
+  ttsVoices: () => invoke<Voice[]>('tts_voices'),
+  /** Returns Speech Dispatcher's message id; events for other ids are stale. */
+  ttsSpeak: (ssml: string, speed: number, voice: string | null, language: string | null) =>
+    invoke<number>('tts_speak', { ssml, speed, voice, language }),
+  ttsPause: () => invoke<void>('tts_pause'),
+  ttsResume: () => invoke<void>('tts_resume'),
+  ttsStop: () => invoke<void>('tts_stop'),
+}
+
+export interface Voice {
+  name: string
+  language: string
+  variant: string
+}
+
+export interface TtsEvent {
+  kind: 'begin' | 'end' | 'canceled' | 'paused' | 'resumed' | 'mark'
+  message: number
+  mark?: string
 }
 
 export const events = {
@@ -92,6 +112,8 @@ export const events = {
     listen<AppError>('library:scan-failed', (e) => handler(e.payload)),
   onStoreChanged: (handler: (changes: StoreChanges) => void): Promise<UnlistenFn> =>
     listen<StoreChanges>('store:changed', (e) => handler(e.payload)),
+  onTts: (handler: (event: TtsEvent) => void): Promise<UnlistenFn> =>
+    listen<TtsEvent>('tts:event', (e) => handler(e.payload)),
 }
 
 /** Normalises anything thrown by a command (or by JS) into `{ kind, message }`. */

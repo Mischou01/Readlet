@@ -51,6 +51,11 @@ declare module 'foliate-js/view.js' {
     getCover?(): Blob | null | undefined | Promise<Blob | null | undefined>
     destroy?(): void
     isExternal?(href: string): boolean
+    /**
+     * Fires `load` ({ type, isScript, allow }) before a resource loads and `data`
+     * ({ data, type, name }) before it's turned into a blob URL; handlers may change `allow`/`data`.
+     */
+    transformTarget?: EventTarget
   }
 
   export interface Location {
@@ -125,7 +130,7 @@ declare module 'foliate-js/view.js' {
     getSectionFractions(): number[]
     getTOCItemOf(target: string): Promise<TocItem | null | undefined>
     addAnnotation(
-      annotation: { value: string; color?: string },
+      annotation: { value: string; color?: string; kind?: string },
       remove?: boolean,
     ): Promise<{ index: number; label: string } | undefined>
     deleteAnnotation(annotation: { value: string }): Promise<unknown>

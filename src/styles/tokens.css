@@ -23,6 +23,8 @@
   --pill-shadow: 0 2px 8px -2px rgba(46, 42, 59, 0.18);
   --blur: blur(24px) saturate(160%);
   --solid: #f7f4f6;
+  /* Popovers sit over text, so they stay legible even where blur isn't available. */
+  --pop-bg: rgba(250, 248, 250, 0.94);
 
   --btn-bg: #2e2a3b;
   --btn-ink: #f7f4f8;
@@ -81,6 +83,7 @@
   --pill-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.4);
   --blur: blur(24px) saturate(140%);
   --solid: #2a2634;
+  --pop-bg: rgba(42, 38, 52, 0.95);
 
   --btn-bg: #ece7f1;
   --btn-ink: #1d1a24;

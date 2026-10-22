@@ -15,8 +15,8 @@
   transform-origin: top;
 }
 
-:root[data-transparency='full'] .menu {
-  background: color-mix(in srgb, var(--fog) 72%, transparent);
+.menu {
+  background: var(--pop-bg);
 }
 
 .menuItem {
@@ -164,11 +164,11 @@
   z-index: 60;
   border-radius: var(--radius-popover);
   border: 1px solid var(--glass-edge);
-  background: var(--pop-bg, var(--glass));
+  background: var(--pop-bg);
   backdrop-filter: var(--blur);
   -webkit-backdrop-filter: var(--blur);
   box-shadow: var(--glass-shadow);
-  color: var(--pop-ink, var(--ink));
+  color: var(--ink);
 }
 
 .toasts {
@@ -201,8 +201,8 @@
   pointer-events: auto;
 }
 
-:root[data-transparency='full'] .toast {
-  background: color-mix(in srgb, var(--fog) 78%, transparent);
+.toast {
+  background: var(--pop-bg);
 }
 
 .toast[data-tone='error'] {
