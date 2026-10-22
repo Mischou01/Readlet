@@ -149,6 +149,11 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
   }, [theme, palette, reduceTransparency])
   useEffect(() => () => useThemeOverride.setState({ override: null }), [])
 
+  // The "open book" transition holds until the book is on screen, or couldn't open.
+  const endOpening = useCallback(() => {
+    if (useApp.getState().opening?.fingerprint === fingerprint) useApp.getState().setOpening(null)
+  }, [fingerprint])
+
   // Load the book file once.
   const entryRef = useLatest(entry)
   const hasEntry = !!entry
@@ -175,12 +180,13 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
           ? e.message
           : `Something went wrong opening this book. (${toAppError(e).message})`
       setOpen({ status: 'error', message, title: name })
+      endOpening()
     })
     return () => {
       cancelled = true
       book?.destroy?.()
     }
-  }, [fingerprint, hasEntry, entryRef])
+  }, [fingerprint, hasEntry, entryRef, endOpening])
 
   // Make sure we have this book's reading data (it may not have been in the library list yet).
   useEffect(() => {
@@ -611,16 +617,24 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
             onReady={(info) => {
               setFixedLayout(info.fixedLayout)
               setReady(true)
+              endOpening()
+              if (entry?.format === 'pdf') {
+                useToasts.getState().show({
+                  message: 'PDF support is experimental: some pages may not look right yet',
+                  durationMs: 7000,
+                })
+              }
               // "Read aloud" in the library opens the book already speaking.
               if (startReadingAloud) readAloud.start()
             }}
-            onError={(e) =>
+            onError={(e) => {
               setOpen({
                 status: 'error',
                 title,
                 message: `This book couldn’t be displayed. (${toAppError(e).message})`,
               })
-            }
+              endOpening()
+            }}
             onRelocate={onRelocate}
             onSelection={(sel) => {
               setSelection(sel)

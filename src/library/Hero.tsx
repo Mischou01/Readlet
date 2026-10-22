@@ -1,4 +1,5 @@
 import { BookOpen, Clock, Play, Volume2 } from 'lucide-react'
+import { useRef } from 'react'
 import { Button } from '../components/Button'
 import { Cover } from '../components/Cover'
 import { ProgressBar } from '../components/Progress'
@@ -12,6 +13,7 @@ import type { LibraryBook } from './model'
 /** "Continue reading" (or "Up next" for an unstarted book) at the top of the library. */
 export function Hero({ book }: { book: LibraryBook }) {
   const bytesPerMinute = usePreferences((s) => s.prefs.bytesPerMinute)
+  const cover = useRef<HTMLButtonElement>(null)
   const started = book.fraction > 0
   const position = readPosition(book.fingerprint)
   const chapter = position?.label ?? book.record?.progress?.label
@@ -21,10 +23,11 @@ export function Hero({ book }: { book: LibraryBook }) {
   return (
     <div className={styles.heroBook}>
       <button
+        ref={cover}
         type="button"
         className={styles.heroCoverButton}
         aria-label={`Open ${book.title}`}
-        onClick={() => openBook(book)}
+        onClick={() => openBook(book, { from: cover.current })}
       >
         <Cover entry={book.entry} title={book.title} authors={book.authors} width={210} large />
       </button>
@@ -58,13 +61,13 @@ export function Hero({ book }: { book: LibraryBook }) {
           <Button
             variant="primary"
             icon={<Play size={18} fill="currentColor" aria-hidden="true" />}
-            onClick={() => openBook(book)}
+            onClick={() => openBook(book, { from: cover.current })}
           >
             {started ? 'Resume' : 'Start reading'}
           </Button>
           <Button
             icon={<Volume2 size={18} strokeWidth={1.8} aria-hidden="true" />}
-            onClick={() => openBook(book, { readAloud: true })}
+            onClick={() => openBook(book, { readAloud: true, from: cover.current })}
           >
             Read aloud
           </Button>

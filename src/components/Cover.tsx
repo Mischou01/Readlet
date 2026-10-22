@@ -27,6 +27,7 @@ export function Cover({ entry, title, authors, width, large, className, style }:
     <span
       className={[styles.cover, large ? styles.large : '', className ?? ''].join(' ')}
       style={{ width, height: Math.round(width * 1.5), background, ...style }}
+      data-cover=""
       aria-hidden="true"
     >
       {hasImage ? (

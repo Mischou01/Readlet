@@ -16,3 +16,8 @@ export function forwardUncaughtErrors() {
     void logError(`unhandled rejection: ${describe(e.reason)}`)
   })
 }
+
+/** For React's root error callbacks: logs a render error with the component stack. */
+export function logRenderError(error: unknown, info: { componentStack?: string }) {
+  void logError(`render error: ${describe(error)}${info.componentStack ?? ''}`)
+}

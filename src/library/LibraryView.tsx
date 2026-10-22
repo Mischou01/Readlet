@@ -145,7 +145,7 @@ function EmptyLibrary() {
       <h1>Your shelves are waiting</h1>
       <p>
         There are no books in {root ? <strong>{root}</strong> : 'your books folder'} yet. Add some,
-        or drop EPUB, MOBI, AZW3, FB2, CBZ or PDF files anywhere in this window.
+        or drop EPUB, MOBI, AZW3, FB2, CBZ or PDF (experimental) files anywhere in this window.
       </p>
       <div className={styles.heroActions}>
         <Button

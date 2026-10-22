@@ -10,6 +10,7 @@ import { addBookFiles } from './library/actions'
 import { indexPendingBooks } from './library/indexer'
 import { LibraryView } from './library/LibraryView'
 import { Onboarding } from './library/Onboarding'
+import { OpeningCoverLayer } from './reader/OpeningCover'
 import { ReaderView } from './reader/ReaderView'
 import { SettingsSheet } from './settings/SettingsSheet'
 import { useApp } from './state/app'
@@ -116,6 +117,7 @@ function Shell({ libraryRoot }: { libraryRoot: string }) {
           )}
         </motion.div>
       </AnimatePresence>
+      <OpeningCoverLayer />
       <AnimatePresence>
         {settingsOpen && view.name !== 'reader' && <SettingsSheet />}
       </AnimatePresence>

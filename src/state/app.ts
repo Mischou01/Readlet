@@ -13,6 +13,15 @@ export type View =
 
 export type Section = 'library' | 'highlights' | 'stats'
 
+/** The cover a book is being opened from, for the "open book" transition. */
+export interface OpeningCover {
+  fingerprint: string
+  rect: { x: number; y: number; width: number; height: number }
+  /** The cover image, or the CSS background of a generated cover. */
+  image: string | null
+  background: string | null
+}
+
 /** A message that needs acknowledging, shown in a dialog. */
 export interface Notice {
   title: string
@@ -26,11 +35,14 @@ interface AppState {
   view: View
   settingsOpen: boolean
   notice: Notice | null
+  opening: OpeningCover | null
   init: () => Promise<void>
   setInfo: (info: AppInfo) => void
   navigate: (view: View) => void
   setSettingsOpen: (open: boolean) => void
   setNotice: (notice: Notice | null) => void
+  /** Starts the "open book" transition; the reader ends it once the book is on screen. */
+  setOpening: (opening: OpeningCover | null) => void
 }
 
 export const useApp = create<AppState>((set) => ({
@@ -40,6 +52,7 @@ export const useApp = create<AppState>((set) => ({
   view: { name: 'library' },
   settingsOpen: false,
   notice: null,
+  opening: null,
   init: async () => {
     try {
       const info = await api.getAppInfo()
@@ -50,7 +63,13 @@ export const useApp = create<AppState>((set) => ({
     }
   },
   setInfo: (info) => set({ info }),
-  navigate: (view) => set({ view, settingsOpen: false }),
+  navigate: (view) =>
+    set((s) => ({
+      view,
+      settingsOpen: false,
+      opening: view.name === 'reader' ? s.opening : null,
+    })),
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
   setNotice: (notice) => set({ notice }),
+  setOpening: (opening) => set({ opening }),
 }))

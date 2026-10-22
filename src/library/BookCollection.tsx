@@ -224,7 +224,11 @@ interface ItemProps {
 function BookTile({ book, onMenu }: ItemProps) {
   return (
     <li className={styles.tile} onContextMenu={(e) => onMenu(book, e)}>
-      <button type="button" className={styles.tileButton} onClick={() => openBook(book)}>
+      <button
+        type="button"
+        className={styles.tileButton}
+        onClick={(e) => openBook(book, { from: e.currentTarget })}
+      >
         <Cover entry={book.entry} title={book.title} authors={book.authors} width={150} />
         <span className={styles.tileTitle} title={book.title}>
           {book.title}
@@ -258,7 +262,11 @@ function BookRow({ book, onMenu }: ItemProps) {
   const lastRead = book.lastReadAt ? formatDay(book.lastReadAt) : ''
   return (
     <li className={styles.row} onContextMenu={(e) => onMenu(book, e)}>
-      <button type="button" className={styles.rowMain} onClick={() => openBook(book)}>
+      <button
+        type="button"
+        className={styles.rowMain}
+        onClick={(e) => openBook(book, { from: e.currentTarget })}
+      >
         <Cover entry={book.entry} title={book.title} authors={book.authors} width={40} />
         <span>
           <span className={styles.tileTitle} style={{ marginTop: 0 }}>

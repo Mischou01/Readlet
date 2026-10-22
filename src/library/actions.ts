@@ -3,7 +3,7 @@
 import { open } from '@tauri-apps/plugin-dialog'
 import { api, toAppError } from '../lib/ipc'
 import { pluralize } from '../lib/format'
-import { useApp } from '../state/app'
+import { useApp, type OpeningCover } from '../state/app'
 import { useLibrary } from '../state/library'
 import { showError, useToasts } from '../state/toasts'
 import { resetIndexer } from './indexer'
@@ -77,11 +77,30 @@ interface OpenableBook {
   entry: { drm: boolean }
 }
 
-/** Opens a book in the reader, or explains why it can't be opened. */
+/** Where a cover is on screen and what it shows, so the reader can grow it into the page. */
+function openingCover(fingerprint: string, from: Element | null | undefined): OpeningCover | null {
+  const cover = from?.matches('[data-cover]') ? from : from?.querySelector('[data-cover]')
+  if (!(cover instanceof HTMLElement)) return null
+  const { x, y, width, height } = cover.getBoundingClientRect()
+  if (width === 0 || height === 0) return null
+  const image = cover.querySelector('img')?.currentSrc || null
+  return {
+    fingerprint,
+    rect: { x, y, width, height },
+    image,
+    background: image ? null : cover.style.background || null,
+  }
+}
+
+/**
+ * Opens a book in the reader, or explains why it can't be opened. `from` is the element that
+ * shows the book's cover, which then grows into the page.
+ */
 export function openBook(
   book: OpenableBook,
-  options: { target?: string; readAloud?: boolean } = {},
+  options: { target?: string; readAloud?: boolean; from?: Element | null } = {},
 ) {
+  const { from, ...view } = options
   const app = useApp.getState()
   if (book.entry.drm) {
     app.setNotice({
@@ -90,5 +109,6 @@ export function openBook(
     })
     return
   }
-  app.navigate({ name: 'reader', fingerprint: book.fingerprint, ...options })
+  app.setOpening(openingCover(book.fingerprint, from))
+  app.navigate({ name: 'reader', fingerprint: book.fingerprint, ...view })
 }
