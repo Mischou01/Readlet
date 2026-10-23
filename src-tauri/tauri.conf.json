@@ -70,6 +70,9 @@
     "linux": {
       "rpm": { "depends": ["speech-dispatcher"] },
       "deb": { "depends": ["speech-dispatcher"] }
+    },
+    "android": {
+      "minSdkVersion": 30
     }
   }
 }
