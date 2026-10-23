@@ -72,7 +72,10 @@ function Shell({ libraryRoot }: { libraryRoot: string }) {
       // The scan started at launch may have finished before we subscribed; scan again so the
       // UI hears about it (unchanged files cost nothing).
       library.setScanning(true)
-      void api.rescanLibrary()
+      api.rescanLibrary().catch((e) => {
+        library.setScanning(false)
+        showError(`Couldn’t read your books folder: ${toAppError(e).message}`)
+      })
     })
     void useStats.getState().load()
     return subscribeAll([
