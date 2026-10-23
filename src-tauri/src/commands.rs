@@ -304,6 +304,8 @@ pub struct AnnotationInput {
     text: String,
     color: Option<String>,
     note: Option<String>,
+    #[serde(default)]
+    from_note: bool,
     name: Option<String>,
     chapter: Option<String>,
     fraction: Option<f64>,
@@ -321,6 +323,9 @@ impl AnnotationInput {
             ("highlight", _) => return Err(Error::invalid("unknown highlight colour")),
             (_, Some(_)) => return Err(Error::invalid("only highlights have a colour")),
             _ => {}
+        }
+        if self.from_note && self.kind != "highlight" {
+            return Err(Error::invalid("only highlights are made from notes"));
         }
         if self.name.is_some() && self.kind != "bookmark" {
             return Err(Error::invalid("only bookmarks have a name"));
@@ -366,6 +371,7 @@ pub async fn put_annotation(
                 text: model::limit_text(&annotation.text, 10_000),
                 color: annotation.color,
                 note,
+                from_note: annotation.from_note,
                 name,
                 chapter: annotation.chapter.map(|c| model::limit_text(&c, 300)),
                 fraction: annotation.fraction,
@@ -618,6 +624,7 @@ mod tests {
             text: "Hi".into(),
             color: color.map(Into::into),
             note: None,
+            from_note: false,
             name: None,
             chapter: None,
             fraction: Some(0.5),
@@ -639,6 +646,13 @@ mod tests {
         };
         assert!(named("bookmark", None).validate().is_ok());
         assert!(named("highlight", Some("mint")).validate().is_err());
+
+        let from_note = |kind: &str, color: Option<&str>| AnnotationInput {
+            from_note: true,
+            ..input(kind, color)
+        };
+        assert!(from_note("highlight", Some("butter")).validate().is_ok());
+        assert!(from_note("bookmark", None).validate().is_err());
     }
 
     #[test]

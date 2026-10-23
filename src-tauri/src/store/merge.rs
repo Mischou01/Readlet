@@ -166,6 +166,7 @@ mod tests {
             text: "Hello".into(),
             color: Some("butter".into()),
             note: (!note.is_empty()).then(|| note.into()),
+            from_note: false,
             name: None,
             chapter: None,
             fraction: None,

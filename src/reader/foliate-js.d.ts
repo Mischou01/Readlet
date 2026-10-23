@@ -87,6 +87,8 @@ declare module 'foliate-js/view.js' {
     setStyles?(styles: string | [string, string]): void
     getContents(): { index: number; doc: Document; overlayer?: unknown }[]
     scrollToAnchor?(anchor: Range | Element | number, select?: boolean): Promise<void>
+    /** What View.goTo() does after resolving its target, without recording history. */
+    goTo?(target: { index: number; anchor?: (doc: Document) => Range | Element }): Promise<void>
     next(): Promise<void>
     prev(): Promise<void>
     readonly heads?: HTMLElement[]

@@ -5,6 +5,7 @@
 import { useEffect, useImperativeHandle, useRef, type CSSProperties, type Ref } from 'react'
 import { useLatest } from '../lib/hooks'
 import {
+  collapseCFI,
   FootnoteHandler,
   Overlayer,
   type Book,
@@ -27,6 +28,14 @@ export interface SelectionInfo {
 export interface HighlightMark {
   cfi: string
   color: string
+  /** It has a note: underlined, and hovering it reports it. */
+  note: boolean
+}
+
+/** A highlight with a note under the pointer, in window coordinates. */
+export interface NoteHover {
+  cfi: string
+  rect: DOMRect
 }
 
 export interface BookLayout {
@@ -44,6 +53,7 @@ export interface BookViewHandle {
   prev(): void
   goLeft(): void
   goRight(): void
+  /** Goes to a chapter (href or index) or a position (CFI). */
   goTo(target: string | number): Promise<void>
   goToFraction(fraction: number): Promise<void>
   /** Streams search results, outlining matches in `color`; call the returned function to stop. */
@@ -51,6 +61,8 @@ export interface BookViewHandle {
   clearSearch(): void
   deselect(): void
   sectionFractions(): number[]
+  /** Where the page on screen starts, for bookmarking it (a CFI). */
+  pageStart(): string | null
   /** The table of contents entry a location falls under. */
   tocItemOf(cfi: string): Promise<TocItem | null>
   /** The underlying view, for read-aloud. */
@@ -79,6 +91,8 @@ interface BookViewProps {
   onRelocate(location: Location, pages: SectionPages | null): void
   onSelection(selection: SelectionInfo | null): void
   onHighlightClick(cfi: string, rect: DOMRect): void
+  /** The pointer moved onto a highlight with a note, or off it (null). */
+  onNoteHover(hover: NoteHover | null): void
   onFootnote(footnote: { element: HTMLElement; rect: DOMRect }): void
   onExternalLink(href: string): void
   onActivity(): void
@@ -135,6 +149,56 @@ function sectionPages(view: View): SectionPages | null {
   return { current: Math.min(Math.max(page, 1), total), total }
 }
 
+/**
+ * Moves a range's start past whitespace. Where a paragraph runs over a page break, the visible text
+ * starts with the space before the page's first word, and that space is laid out at the end of the
+ * previous page: going to it would show the wrong page.
+ */
+function skipLeadingSpace<T extends Range | Element>(anchor: T): T {
+  if (!('startContainer' in anchor)) return anchor
+  const { startContainer: node, startOffset } = anchor
+  if (node.nodeType !== Node.TEXT_NODE) return anchor
+  const text = node.nodeValue ?? ''
+  let offset = startOffset
+  while (offset < text.length && /\s/.test(text.charAt(offset))) offset++
+  if (offset === startOffset || offset === text.length) return anchor
+  const moved = anchor.cloneRange()
+  moved.setStart(node, offset)
+  return moved as T
+}
+
+const SVG_NS = 'http://www.w3.org/2000/svg'
+
+/** A highlight with a dotted underline, which says there's a note to read. */
+function drawNoted(rects: DOMRectList, color: string, dark: boolean): SVGElement {
+  const g = document.createElementNS(SVG_NS, 'g')
+  g.append(Overlayer.highlight(rects, { color }))
+  const line = document.createElementNS(SVG_NS, 'g')
+  line.setAttribute('stroke', dark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.45)')
+  line.setAttribute('stroke-width', '1.5')
+  line.setAttribute('stroke-dasharray', '2 3')
+  for (const { left, right, bottom, width } of Array.from(rects)) {
+    if (!width) continue
+    const l = document.createElementNS(SVG_NS, 'line')
+    l.setAttribute('x1', String(left))
+    l.setAttribute('x2', String(right))
+    l.setAttribute('y1', String(bottom - 1))
+    l.setAttribute('y2', String(bottom - 1))
+    line.append(l)
+  }
+  g.append(line)
+  return g
+}
+
+/** The annotation foliate-js draws for a highlight. */
+const markAnnotation = ({ cfi, color, note }: HighlightMark) => ({
+  value: cfi,
+  color,
+  kind: note ? 'note' : undefined,
+})
+
+type HitTest = (point: { x: number; y: number }) => [string?, Range?]
+
 function firstVisibleRect(range: Range): DOMRect {
   const rects = Array.from(range.getClientRects()).filter((r) => r.width > 0 && r.height > 0)
   return rects[0] ?? range.getBoundingClientRect()
@@ -145,7 +209,7 @@ export function BookView(props: BookViewProps) {
   const container = useRef<HTMLDivElement>(null)
   const viewRef = useRef<View | null>(null)
   const ready = useRef(false)
-  const marks = useRef(new Map<string, string>())
+  const marks = useRef(new Map<string, HighlightMark>())
   const speaking = useRef<string | null>(null)
   const callbacks = useLatest(props)
   const initialLocation = useRef(props.initialLocation)
@@ -160,7 +224,22 @@ export function BookView(props: BookViewProps) {
       goLeft: () => void viewRef.current?.goLeft(),
       goRight: () => void viewRef.current?.goRight(),
       goTo: async (target) => {
-        await viewRef.current?.goTo(target)
+        const view = viewRef.current
+        if (!view) return
+        const resolved =
+          typeof target === 'string' && target.startsWith('epubcfi(')
+            ? view.resolveNavigation(target)
+            : undefined
+        const anchor = resolved?.anchor
+        if (resolved && anchor && view.renderer.goTo) {
+          // Bookmarks saved before pageStart() skipped the space at a page break still land right.
+          await view.renderer.goTo({
+            index: resolved.index,
+            anchor: (doc) => skipLeadingSpace(anchor(doc)),
+          })
+        } else {
+          await view.goTo(target)
+        }
       },
       goToFraction: async (fraction) => {
         await viewRef.current?.goToFraction(fraction)
@@ -192,6 +271,17 @@ export function BookView(props: BookViewProps) {
       clearSearch: () => viewRef.current?.clearSearch(),
       deselect: () => viewRef.current?.deselect(),
       sectionFractions: () => viewRef.current?.getSectionFractions() ?? [],
+      pageStart: () => {
+        const view = viewRef.current
+        const location = view?.lastLocation
+        if (!view || !location?.cfi) return null
+        const index = view.renderer.getContents()[0]?.index
+        // Fixed layouts have no text range: the page is its own position.
+        if (!location.range || index === undefined) return collapseCFI(location.cfi)
+        const start = skipLeadingSpace(location.range).cloneRange()
+        start.collapse(true)
+        return view.getCFI(index, start)
+      },
       tocItemOf: async (cfi) => (await viewRef.current?.getTOCItemOf(cfi)) ?? null,
       view: () => viewRef.current,
       markSpeaking: (range, color) => {
@@ -226,6 +316,12 @@ export function BookView(props: BookViewProps) {
     let highlightClicked = false
     let textArea: Element | null = null
     let lastLinkRect = new DOMRect()
+    let hoveredNote: string | null = null
+    const setHoveredNote = (hover: NoteHover | null) => {
+      if ((hover?.cfi ?? null) === hoveredNote) return
+      hoveredNote = hover?.cfi ?? null
+      callbacks.current.onNoteHover(hover)
+    }
     let wheelDelta = 0
     let wheelLockedUntil = 0
     let pendingTap: ReturnType<typeof setTimeout> | undefined
@@ -292,12 +388,23 @@ export function BookView(props: BookViewProps) {
         callbacks.current.onKeyDown(e)
       })
       let lastPointer = { x: -1, y: -1 }
+      const noteAt = (x: number, y: number): NoteHover | null => {
+        const overlayer = view.renderer.getContents().find((c) => c.doc === doc)?.overlayer as
+          { hitTest: HitTest } | undefined
+        const [cfi, range] = overlayer?.hitTest({ x, y }) ?? []
+        if (!cfi || !range || !marks.current.get(cfi)?.note) return null
+        return { cfi, rect: toWindowRect(firstVisibleRect(range), doc) }
+      }
       doc.addEventListener('pointermove', (e) => {
         // WebKit sends synthetic moves when the page scrolls under a still pointer.
         if (e.screenX === lastPointer.x && e.screenY === lastPointer.y) return
         lastPointer = { x: e.screenX, y: e.screenY }
         callbacks.current.onActivity()
         callbacks.current.onPointerMove()
+        if (e.pointerType === 'mouse') setHoveredNote(noteAt(e.clientX, e.clientY))
+      })
+      doc.addEventListener('pointerout', (e) => {
+        if (!e.relatedTarget) setHoveredNote(null)
       })
       doc.addEventListener('wheel', onWheel, { passive: true })
       // A second press means a double-click (selecting a word), so a tap still waiting is dropped.
@@ -337,10 +444,12 @@ export function BookView(props: BookViewProps) {
 
     view.addEventListener('load', ((e: CustomEvent<{ doc: Document; index: number }>) =>
       attachToPage(e.detail.doc, e.detail.index)) as EventListener)
-    view.addEventListener('relocate', ((e: CustomEvent<Location>) =>
-      callbacks.current.onRelocate(e.detail, sectionPages(view))) as EventListener)
+    view.addEventListener('relocate', ((e: CustomEvent<Location>) => {
+      setHoveredNote(null)
+      callbacks.current.onRelocate(e.detail, sectionPages(view))
+    }) as EventListener)
     view.addEventListener('create-overlay', () => {
-      for (const [cfi, color] of marks.current) void view.addAnnotation({ value: cfi, color })
+      for (const mark of marks.current.values()) void view.addAnnotation(markAnnotation(mark))
     })
     view.addEventListener('draw-annotation', ((e: CustomEvent) => {
       const { draw, annotation } = e.detail as {
@@ -355,12 +464,15 @@ export function BookView(props: BookViewProps) {
           g.style.mixBlendMode = 'normal'
           return g
         }, {})
+      } else if (annotation.kind === 'note') {
+        draw((rects: DOMRectList) => drawNoted(rects, annotation.color, callbacks.current.dark), {})
       } else {
         draw(Overlayer.highlight, { color: annotation.color })
       }
     }) as EventListener)
     view.addEventListener('show-annotation', ((e: CustomEvent<{ value: string; range: Range }>) => {
       highlightClicked = true
+      setHoveredNote(null)
       const { value, range } = e.detail
       const doc = range.startContainer.ownerDocument
       const rect = doc ? toWindowRect(firstVisibleRect(range), doc) : firstVisibleRect(range)
@@ -438,16 +550,18 @@ export function BookView(props: BookViewProps) {
   // Highlights: draw what's new or changed, remove what's gone.
   useEffect(() => {
     const view = viewRef.current
-    const next = new Map(highlights.map((h) => [h.cfi, h.color]))
+    const next = new Map(highlights.map((h) => [h.cfi, h]))
     const previous = marks.current
     marks.current = next
     // Before the book is open, pages draw their marks as they load ('create-overlay').
     if (!view || !ready.current) return
-    for (const [cfi, color] of previous) {
-      if (next.get(cfi) !== color) void view.deleteAnnotation({ value: cfi })
+    const same = (a?: HighlightMark, b?: HighlightMark) =>
+      a?.color === b?.color && a?.note === b?.note
+    for (const [cfi, mark] of previous) {
+      if (!same(next.get(cfi), mark)) void view.deleteAnnotation({ value: cfi })
     }
-    for (const [cfi, color] of next) {
-      if (previous.get(cfi) !== color) void view.addAnnotation({ value: cfi, color })
+    for (const [cfi, mark] of next) {
+      if (!same(previous.get(cfi), mark)) void view.addAnnotation(markAnnotation(mark))
     }
   }, [highlights])
 

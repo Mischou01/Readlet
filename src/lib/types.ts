@@ -81,6 +81,8 @@ export interface Annotation {
   text: string
   color?: string
   note?: string
+  /** A highlight made by adding a note, rather than picked: removing the note removes it. */
+  fromNote?: boolean
   /** A bookmark's name, if the reader gave it one. */
   name?: string
   chapter?: string

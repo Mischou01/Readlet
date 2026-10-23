@@ -1,4 +1,4 @@
-import { BookOpen, Copy, PencilLine, Trash2, Volume2 } from 'lucide-react'
+import { AudioLines, BookOpen, Copy, PencilLine, Trash2, Volume2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '../components/Button'
 import { Dialog } from '../components/Dialog'
@@ -42,6 +42,7 @@ interface SelectionBarProps {
   onNote: () => void
   onDefine: () => void
   onCopy: () => void
+  onReadSelection: () => void
   onReadFromHere: () => void
   onClose: () => void
 }
@@ -73,8 +74,22 @@ export function SelectionBar(props: SelectionBarProps) {
           <Copy size={16} strokeWidth={1.8} aria-hidden="true" />
           Copy
         </button>
-        <button type="button" className={styles.barButton} onClick={props.onReadFromHere}>
+        <button
+          type="button"
+          className={styles.barButton}
+          title="Read the selected text aloud, then stop"
+          onClick={props.onReadSelection}
+        >
           <Volume2 size={16} strokeWidth={1.8} aria-hidden="true" />
+          Read this
+        </button>
+        <button
+          type="button"
+          className={styles.barButton}
+          title="Keep reading aloud from here on"
+          onClick={props.onReadFromHere}
+        >
+          <AudioLines size={16} strokeWidth={1.8} aria-hidden="true" />
           Read from here
         </button>
       </div>
@@ -111,6 +126,33 @@ export function HighlightBar(props: HighlightBarProps) {
           <Trash2 size={16} strokeWidth={1.8} aria-hidden="true" />
           Remove
         </button>
+      </div>
+    </Popover>
+  )
+}
+
+/** A highlight's note, shown while the pointer is over the highlight. */
+export function NotePreview({
+  anchor,
+  note,
+  onClose,
+}: {
+  anchor: DOMRect
+  note: string
+  onClose: () => void
+}) {
+  return (
+    <Popover
+      anchor={anchor}
+      label="Note"
+      role="tooltip"
+      persistent
+      onClose={onClose}
+      style={{ pointerEvents: 'none' }}
+    >
+      <div className={styles.notePreview}>
+        <PencilLine size={14} strokeWidth={1.8} aria-hidden="true" />
+        <p>{note}</p>
       </div>
     </Popover>
   )
@@ -164,13 +206,21 @@ interface BookmarkNameDialogProps {
   /** The passage the bookmark is on, as a reminder of where it is. */
   passage: string
   initial: string
+  /** Offered when there's no name yet (the chapter's), selected so typing replaces it. */
+  suggestion?: string
   onSave: (name: string) => void
   onClose: () => void
 }
 
 /** Names or renames a bookmark. Saving an empty name clears it. */
-export function BookmarkNameDialog({ passage, initial, onSave, onClose }: BookmarkNameDialogProps) {
-  const [name, setName] = useState(initial)
+export function BookmarkNameDialog({
+  passage,
+  initial,
+  suggestion,
+  onSave,
+  onClose,
+}: BookmarkNameDialogProps) {
+  const [name, setName] = useState(initial || suggestion || '')
   return (
     <Dialog
       title={initial ? 'Rename bookmark' : 'Name this bookmark'}
@@ -196,8 +246,9 @@ export function BookmarkNameDialog({ passage, initial, onSave, onClose }: Bookma
         style={{ marginTop: 14 }}
         value={name}
         maxLength={200}
-        placeholder="Where the storm begins"
+        placeholder="Bookmark name"
         autoComplete="off"
+        onFocus={(e) => e.currentTarget.select()}
         onChange={(e) => setName(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === 'Enter') {

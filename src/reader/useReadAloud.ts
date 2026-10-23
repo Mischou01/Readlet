@@ -1,12 +1,18 @@
 // Read-aloud (docs/PLAN.md §6): foliate-js turns each paragraph into SSML with a mark before
 // every sentence; the Rust core speaks it through Speech Dispatcher and reports each mark, which
-// highlights the sentence and turns pages as needed. At the end of a chapter it moves on.
+// highlights the sentence and turns pages as needed. At the end of a chapter it moves on. A selected
+// passage is read on its own instead (passage.ts), and stops at its end.
+//
+// Pausing cancels the speech and resuming starts the sentence again: Speech Dispatcher's own PAUSE
+// may keep talking until the synthesizer reaches a point it can resume from, which can be the end
+// of the paragraph.
 
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { api, events, toAppError, type TtsEvent, type Voice } from '../lib/ipc'
 import { usePreferences } from '../state/preferences'
 import { useToasts } from '../state/toasts'
 import type { BookViewHandle } from './BookView'
+import { passageFromRange } from './passage'
 import { markNames, ssmlFromMark } from './ssml'
 import { withAlpha } from './themes'
 
@@ -24,6 +30,8 @@ export interface ReadAloud {
   voices: Voice[]
   sleep: SleepTimer
   start: (from?: Range) => void
+  /** Reads just the text in `range`, then stops. */
+  readPassage: (range: Range) => void
   toggle: () => void
   stop: () => void
   previous: () => void
@@ -55,6 +63,11 @@ export function useReadAloud({ handle, active, language, accent, onEnded }: Opti
   const paragraph = useRef<string>('')
   const mark = useRef<string | null>(null)
   const stopped = useRef(true)
+  const paused = useRef(false)
+  /** Counts speak requests, so one still waiting for its message id knows it's been overtaken. */
+  const turn = useRef(0)
+  /** While reading a selected passage: its sentences by mark name (else tts.js has them). */
+  const passage = useRef<Map<string, Range> | null>(null)
   const settings = useRef({ speed, voice, language, accent, sleep, onEnded })
   useEffect(() => {
     settings.current = { speed, voice, language, accent, sleep, onEnded }
@@ -62,48 +75,64 @@ export function useReadAloud({ handle, active, language, accent, onEnded }: Opti
 
   const view = useCallback(() => handle.current?.view() ?? null, [handle])
 
+  /** Forgets the message being spoken, so its remaining events are ignored. */
+  const quiet = useCallback(() => {
+    turn.current += 1
+    message.current = null
+    paused.current = false
+    passage.current = null
+  }, [])
+
   const finish = useCallback(
     (reason?: string) => {
       stopped.current = true
-      message.current = null
+      quiet()
       handle.current?.markSpeaking(null, '')
       setStatus('idle')
       void api.ttsStop().catch(() => {})
       if (reason) useToasts.getState().show({ message: reason })
       settings.current.onEnded()
     },
-    [handle],
+    [handle, quiet],
   )
 
   const fail = useCallback(
     (e: unknown) => {
       stopped.current = true
-      message.current = null
+      quiet()
       handle.current?.markSpeaking(null, '')
       setError(toAppError(e).message)
       setStatus('error')
     },
-    [handle],
+    [handle, quiet],
   )
 
+  /** Speaks `ssml`; `whole` if it's a new paragraph (or passage) rather than part of the current one. */
   const speak = useCallback(async (ssml: string, whole: boolean) => {
-    if (stopped.current) return
+    if (stopped.current || paused.current) return
     if (whole) paragraph.current = ssml
     mark.current = null
     const { speed, voice, language } = settings.current
-    setStatus((s) => (s === 'paused' ? s : 'playing'))
-    message.current = await api.ttsSpeak(ssml, speed, voice, language)
+    setStatus('playing')
+    const mine = (turn.current += 1)
+    const id = await api.ttsSpeak(ssml, speed, voice, language)
+    if (mine === turn.current) message.current = id
+    // Paused or stopped while Speech Dispatcher was taking it: it mustn't play.
+    else if (stopped.current || paused.current) await api.ttsStop()
   }, [])
+
+  const highlight = useCallback(
+    (range: Range) => handle.current?.markSpeaking(range, withAlpha(settings.current.accent, 0.24)),
+    [handle],
+  )
 
   const ensureTts = useCallback(async () => {
     const v = view()
     if (!v) throw new Error('the book isn’t open yet')
-    const highlight = (range: Range) =>
-      handle.current?.markSpeaking(range, withAlpha(settings.current.accent, 0.24))
     await v.initTTS('sentence', highlight)
     if (!v.tts) throw new Error('this book can’t be read aloud')
     return v.tts
-  }, [handle, view])
+  }, [highlight, view])
 
   /** Next paragraph; at the end of a chapter, the next chapter (skipping empty ones). */
   const advance = useCallback(async () => {
@@ -133,9 +162,14 @@ export function useReadAloud({ handle, active, language, accent, onEnded }: Opti
         if (stopped.current || event.message !== message.current) return
         if (event.kind === 'mark' && event.mark != null) {
           mark.current = event.mark
-          view()?.tts?.setMark(event.mark)
+          if (!passage.current) view()?.tts?.setMark(event.mark)
+          else {
+            const sentence = passage.current.get(event.mark)
+            if (sentence) highlight(sentence)
+          }
         } else if (event.kind === 'end') {
-          advance().catch(fail)
+          if (passage.current) finish()
+          else advance().catch(fail)
         }
       })
       .then((fn) => (disposed ? fn() : (unlisten = fn)))
@@ -143,19 +177,19 @@ export function useReadAloud({ handle, active, language, accent, onEnded }: Opti
       disposed = true
       unlisten?.()
     }
-  }, [advance, fail, view])
+  }, [advance, fail, finish, highlight, view])
 
   // Stop speaking when read-aloud is turned off or the reader closes.
   useEffect(() => {
     if (active) return
     if (!stopped.current) {
       stopped.current = true
-      message.current = null
+      quiet()
       void api.ttsStop().catch(() => {})
       handle.current?.markSpeaking(null, '')
       setStatus('idle')
     }
-  }, [active, handle])
+  }, [active, handle, quiet])
   useEffect(
     () => () => {
       if (!stopped.current) void api.ttsStop().catch(() => {})
@@ -181,7 +215,10 @@ export function useReadAloud({ handle, active, language, accent, onEnded }: Opti
 
   const start = useCallback(
     (from?: Range) => {
+      quiet()
       stopped.current = false
+      paragraph.current = ''
+      mark.current = null
       setError(null)
       setStatus('loading')
       void (async () => {
@@ -192,38 +229,69 @@ export function useReadAloud({ handle, active, language, accent, onEnded }: Opti
         else await advance()
       })().catch(fail)
     },
-    [ensureTts, speak, advance, fail, view],
+    [quiet, ensureTts, speak, advance, fail, view],
   )
 
+  const readPassage = useCallback(
+    (range: Range) => {
+      // Worked out now: the selection the range came from is about to be cleared.
+      const selected = passageFromRange(range, settings.current.language)
+      quiet()
+      if (!selected) return finish()
+      stopped.current = false
+      passage.current = selected.sentences
+      setError(null)
+      setStatus('loading')
+      speak(selected.ssml, true).catch(fail)
+    },
+    [quiet, finish, speak, fail],
+  )
+
+  const pause = useCallback(() => {
+    // The sentence stays marked, to show where reading will pick up.
+    const reading = passage.current
+    quiet()
+    passage.current = reading
+    paused.current = true
+    setStatus('paused')
+    api.ttsStop().catch(fail)
+  }, [quiet, fail])
+
+  const resume = useCallback(() => {
+    paused.current = false
+    if (!paragraph.current) return start()
+    const from = mark.current != null ? ssmlFromMark(paragraph.current, mark.current) : null
+    speak(from ?? paragraph.current, false).catch(fail)
+  }, [start, speak, fail])
+
   const toggle = useCallback(() => {
-    if (status === 'playing') {
-      setStatus('paused')
-      api.ttsPause().catch(fail)
-    } else if (status === 'paused') {
-      setStatus('playing')
-      api.ttsResume().catch(fail)
-    } else {
-      start()
-    }
-  }, [status, start, fail])
+    if (status === 'playing' || status === 'loading') pause()
+    else if (status === 'paused') resume()
+    else start()
+  }, [status, pause, resume, start])
 
   const jump = useCallback(
     (direction: 1 | -1) => {
       void (async () => {
-        const tts = await ensureTts()
         const names = markNames(paragraph.current)
         const current = mark.current != null ? names.indexOf(mark.current) : -1
         const target = names[current + direction]
         const within =
           target != null && current >= 0 ? ssmlFromMark(paragraph.current, target) : null
         stopped.current = false
+        paused.current = false
         if (within) return speak(within, false)
+        if (passage.current) {
+          // Past the end of a selected passage there's nothing more; before it, its start.
+          return direction > 0 ? finish() : speak(paragraph.current, false)
+        }
+        const tts = await ensureTts()
         const ssml = direction > 0 ? tts.next() : tts.prev()
         if (ssml) return speak(ssml, true)
         if (direction > 0) return advance()
       })().catch(fail)
     },
-    [ensureTts, speak, advance, fail],
+    [ensureTts, speak, advance, finish, fail],
   )
 
   return {
@@ -234,6 +302,7 @@ export function useReadAloud({ handle, active, language, accent, onEnded }: Opti
     voices,
     sleep,
     start,
+    readPassage,
     toggle,
     stop: () => {
       if (!stopped.current) finish()

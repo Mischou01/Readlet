@@ -593,6 +593,32 @@
   border-radius: var(--radius-popover);
 }
 
+.notePreview {
+  display: flex;
+  gap: 9px;
+  max-width: min(340px, calc(100vw - 32px));
+  padding: 11px 15px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.notePreview svg {
+  flex: none;
+  margin-top: 3px;
+  color: var(--haze);
+}
+
+.notePreview p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 8;
+  -webkit-box-orient: vertical;
+}
+
 .quote {
   margin-top: 14px;
   padding-left: 14px;

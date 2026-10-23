@@ -90,7 +90,6 @@ export function ReadAloudBar({ readAloud, entry, title, chapter, minutesLeft }: 
         className={styles.play}
         aria-label={playing ? 'Pause' : 'Play'}
         onClick={readAloud.toggle}
-        disabled={status === 'loading'}
       >
         {playing ? (
           <Pause size={20} fill="currentColor" strokeWidth={0} aria-hidden="true" />

@@ -24,6 +24,8 @@ export interface AnnotationInput {
   text: string
   color?: string
   note?: string
+  /** Highlights only: it was made by adding a note. */
+  fromNote?: boolean
   /** Bookmarks only. */
   name?: string
   chapter?: string

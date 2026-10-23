@@ -47,6 +47,9 @@ pub struct Annotation {
     pub color: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
+    /// A highlight made by adding a note rather than picked; removing the note removes it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub from_note: bool,
     /// A bookmark's name, if the reader gave it one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,

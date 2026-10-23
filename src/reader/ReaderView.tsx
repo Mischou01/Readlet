@@ -24,15 +24,15 @@ import {
   BookView,
   type BookLayout,
   type BookViewHandle,
+  type NoteHover,
   type SectionPages,
   type SelectionInfo,
   type TapZone,
 } from './BookView'
 import { ContentsSheet } from './ContentsSheet'
+import { bookmarksOnPage } from './bookmarks'
 import {
   BookOpenError,
-  compareCFI,
-  collapseCFI,
   fetchBookFile,
   loadBook,
   type Book,
@@ -46,6 +46,7 @@ import {
   FootnotePopover,
   HighlightBar,
   NoteDialog,
+  NotePreview,
   SelectionBar,
 } from './ReaderPopovers'
 import { ReaderFooter } from './ReaderFooter'
@@ -69,6 +70,7 @@ const PROGRESS_SAVE_MS = 1200
 const MARGIN_WIDTHS = { narrow: 760, medium: 640, wide: 540 } as const
 /** Two-page spreads only when there's room for two comfortable columns. */
 const SPREAD_MIN_WIDTH = 1500
+const NOTE_PREVIEW_DELAY_MS = 250
 
 interface ReaderViewProps {
   fingerprint: string
@@ -336,9 +338,30 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
       highlights.map((h) => ({
         cfi: h.cfi,
         color: HIGHLIGHTS[(h.color as HighlightColor) ?? 'butter']?.hex ?? HIGHLIGHTS.butter.hex,
+        note: !!h.note,
       })),
     [highlights],
   )
+
+  // Hovering a highlight with a note shows the note, after a moment (so passing over doesn't).
+  const [hoveredNote, setHoveredNote] = useState<{ annotation: Annotation; rect: DOMRect } | null>(
+    null,
+  )
+  const noteHoverTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const onNoteHover = (hover: NoteHover | null) => {
+    clearTimeout(noteHoverTimer.current)
+    if (!hover) {
+      setHoveredNote(null)
+      return
+    }
+    const annotation = highlights.find((h) => h.cfi === hover.cfi)
+    if (!annotation?.note) return
+    noteHoverTimer.current = setTimeout(
+      () => setHoveredNote({ annotation, rect: hover.rect }),
+      NOTE_PREVIEW_DELAY_MS,
+    )
+  }
+  useEffect(() => () => clearTimeout(noteHoverTimer.current), [])
 
   /** Saves an annotation change; false if it failed (the reader has been told). */
   const apply = useCallback(
@@ -354,6 +377,7 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
     [putRecord],
   )
 
+  /** Highlights the selection; with a note, the highlight is there for the note (`fromNote`). */
   const addHighlight = async (
     sel: SelectionInfo,
     color: HighlightColor,
@@ -368,6 +392,7 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
         text: sel.text,
         color,
         note,
+        fromNote: note ? true : undefined,
         chapter: chapterLabel(tocRef.current, location?.tocItem),
         fraction: location?.fraction,
       })
@@ -395,56 +420,53 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
     })
   }
 
+  /** Saves a highlight again, with `patch` applied (an empty note removes the note). */
   const updateHighlight = (
     annotation: Annotation,
-    patch: Partial<Pick<Annotation, 'color' | 'note'>>,
-  ) =>
-    apply(
+    patch: Partial<Pick<Annotation, 'color' | 'note' | 'fromNote'>> = {},
+  ) => {
+    const updated = { ...annotation, ...patch }
+    return apply(
       api.putAnnotation(fingerprint, {
-        id: annotation.id,
+        id: updated.id,
         kind: 'highlight',
-        cfi: annotation.cfi,
-        text: annotation.text,
-        color: patch.color ?? annotation.color,
-        note: patch.note !== undefined ? patch.note : annotation.note,
-        chapter: annotation.chapter,
-        fraction: annotation.fraction,
+        cfi: updated.cfi,
+        text: updated.text,
+        color: updated.color,
+        note: updated.note,
+        fromNote: updated.fromNote || undefined,
+        chapter: updated.chapter,
+        fraction: updated.fraction,
       }),
     )
+  }
 
-  const removeHighlight = async (annotation: Annotation) => {
-    await apply(api.deleteAnnotation(fingerprint, annotation.id))
+  const removeHighlight = async (annotation: Annotation, message = 'Highlight removed') => {
+    if (!(await apply(api.deleteAnnotation(fingerprint, annotation.id)))) return
     useToasts.getState().show({
-      message: 'Highlight removed',
-      action: {
-        label: 'Undo',
-        run: () =>
-          void apply(
-            api.putAnnotation(fingerprint, {
-              id: annotation.id,
-              kind: 'highlight',
-              cfi: annotation.cfi,
-              text: annotation.text,
-              color: annotation.color,
-              note: annotation.note,
-              chapter: annotation.chapter,
-              fraction: annotation.fraction,
-            }),
-          ),
-      },
+      message,
+      action: { label: 'Undo', run: () => void updateHighlight(annotation) },
     })
   }
 
-  const pageBookmarks = useMemo(() => {
-    if (!location?.cfi) return []
-    try {
-      const start = collapseCFI(location.cfi)
-      const end = collapseCFI(location.cfi, true)
-      return bookmarks.filter((b) => compareCFI(b.cfi, start) >= 0 && compareCFI(b.cfi, end) <= 0)
-    } catch {
-      return []
+  /** Saves a note from the note dialog, on a new highlight or an existing one. */
+  const saveNote = (target: NonNullable<typeof noteFor>, note: string) => {
+    const { annotation } = target
+    if (!annotation) {
+      // An empty new note adds nothing, not a bare highlight.
+      if (note && selection) void addHighlight(selection, 'butter', note)
+      return
     }
-  }, [bookmarks, location])
+    if (note === (annotation.note ?? '')) return
+    // A highlight that was only there for its note goes with it.
+    if (!note && annotation.fromNote) void removeHighlight(annotation, 'Note removed')
+    else void updateHighlight(annotation, { note })
+  }
+
+  const pageBookmarks = useMemo(
+    () => bookmarksOnPage(bookmarks, location?.cfi),
+    [bookmarks, location],
+  )
 
   // Which chapters hold bookmarks, for the contents list. Worked out when it's open, since finding
   // a bookmark's chapter means reading that chapter's document.
@@ -505,12 +527,13 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
       await removeBookmarks(pageBookmarks)
       return
     }
-    if (!location?.cfi) return
+    const cfi = handle.current?.pageStart()
+    if (!location || !cfi) return
     const id = newId()
     const text = (location.range?.toString() ?? '').replace(/\s+/g, ' ').trim().slice(0, 160)
     const added = await putBookmark({
       id,
-      cfi: collapseCFI(location.cfi),
+      cfi,
       text,
       chapter: chapterLabel(tocRef.current, location.tocItem),
       fraction: location.fraction,
@@ -541,11 +564,13 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
     onEnded: () => setReadingAloud(false),
   })
 
-  const startReadAloud = (from?: Range) => {
+  /** Reads on from `from` (or the page), or with `passageOnly`, just the text in it. */
+  const startReadAloud = (from?: Range, passageOnly = false) => {
     setSheet(null)
     setSelection(null)
     setReadingAloud(true)
-    readAloud.start(from)
+    if (from && passageOnly) readAloud.readPassage(from)
+    else readAloud.start(from)
   }
 
   // -- Input ------------------------------------------------------------------------------------
@@ -727,6 +752,7 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
               setSelection(sel)
               if (sel) setActiveHighlight(null)
             }}
+            onNoteHover={onNoteHover}
             onHighlightClick={(cfi, rect) => {
               const annotation = highlights.find((h) => h.cfi === cfi)
               if (annotation) setActiveHighlight({ annotation, rect })
@@ -857,6 +883,10 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
             handle.current?.deselect()
             setSelection(null)
           }}
+          onReadSelection={() => {
+            startReadAloud(selection.range, true)
+            handle.current?.deselect()
+          }}
           onReadFromHere={() => startReadAloud(selection.range)}
           onClose={() => setSelection(null)}
         />
@@ -867,7 +897,8 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
           anchor={activeHighlight.rect}
           annotation={activeHighlight.annotation}
           onColor={(color) => {
-            void updateHighlight(activeHighlight.annotation, { color })
+            // Picking a colour makes it a highlight in its own right, kept if the note goes.
+            void updateHighlight(activeHighlight.annotation, { color, fromNote: false })
             setActiveHighlight(null)
           }}
           onNote={() => {
@@ -890,6 +921,14 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
         />
       )}
 
+      {hoveredNote && !overlayOpen && (
+        <NotePreview
+          anchor={hoveredNote.rect}
+          note={hoveredNote.annotation.note ?? ''}
+          onClose={() => setHoveredNote(null)}
+        />
+      )}
+
       {noteFor && (
         <NoteDialog
           quote={noteFor.text}
@@ -898,8 +937,7 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
           onSave={(note) => {
             const target = noteFor
             setNoteFor(null)
-            if (target.annotation) void updateHighlight(target.annotation, { note })
-            else if (selection) void addHighlight(selection, 'butter', note || undefined)
+            saveNote(target, note)
           }}
         />
       )}
@@ -908,6 +946,7 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
         <BookmarkNameDialog
           passage={namingBookmark.text}
           initial={namingBookmark.name ?? ''}
+          suggestion={namingBookmark.chapter}
           onClose={() => setNamingBookmark(null)}
           onSave={(name) => {
             const target = namingBookmark

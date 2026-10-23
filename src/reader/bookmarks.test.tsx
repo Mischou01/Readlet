@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { highlight } from '../test/fixtures'
 import type { Annotation } from '../lib/types'
+import { bookmarksOnPage } from './bookmarks'
 import { ContentsSheet } from './ContentsSheet'
 import { BookmarkNameDialog } from './ReaderPopovers'
 
@@ -40,6 +41,42 @@ function showBookmarks(bookmarks: Annotation[]) {
   return { onRename }
 }
 
+// What foliate-js reports for consecutive pages of one chapter (taken from a real layout). Pages 3
+// and 5 start mid-paragraph, exactly where the page before them ends.
+const PAGES = [
+  'epubcfi(/6/2!/4,/2,/16/1:355)',
+  'epubcfi(/6/2!/4,/18,/32/1:204)',
+  'epubcfi(/6/2!/4,/32/1:204,/46/1:286)',
+  'epubcfi(/6/2!/4,/48,/62/1:195)',
+  'epubcfi(/6/2!/4,/62/1:195,/76/1:206)',
+]
+
+/** The pages (1-based) a bookmark shows on. */
+function pagesShowing(cfi: string): number[] {
+  const b = bookmark({ cfi })
+  return PAGES.flatMap((page, i) => (bookmarksOnPage([b], page).length ? [i + 1] : []))
+}
+
+describe('bookmarksOnPage', () => {
+  it('shows a bookmark on its own page only, even where a paragraph runs over the break', () => {
+    expect(pagesShowing('epubcfi(/6/2!/4/32/1:204)')).toEqual([3])
+    expect(pagesShowing('epubcfi(/6/2!/4/32/1:205)')).toEqual([3])
+    expect(pagesShowing('epubcfi(/6/2!/4/48)')).toEqual([4])
+    expect(pagesShowing('epubcfi(/6/2!/4/2)')).toEqual([1])
+    expect(pagesShowing('epubcfi(/6/4!/4/2)')).toEqual([])
+  })
+
+  it('matches fixed-layout pages by their single position', () => {
+    expect(bookmarksOnPage([bookmark({ cfi: 'epubcfi(/6/4)' })], 'epubcfi(/6/4)')).toHaveLength(1)
+    expect(bookmarksOnPage([bookmark({ cfi: 'epubcfi(/6/4)' })], 'epubcfi(/6/6)')).toHaveLength(0)
+  })
+
+  it('ignores positions it can’t read', () => {
+    expect(bookmarksOnPage([bookmark()], undefined)).toEqual([])
+    expect(bookmarksOnPage([bookmark({ cfi: 'nonsense' })], PAGES[0])).toEqual([])
+  })
+})
+
 describe('bookmarks in Contents', () => {
   it('lists a named bookmark by its name, with its passage under it', () => {
     const named = bookmark({ name: 'The storm' })
@@ -65,6 +102,25 @@ describe('BookmarkNameDialog', () => {
     fireEvent.change(input, { target: { value: '  The storm  ' } })
     fireEvent.keyDown(input, { key: 'Enter' })
     expect(onSave).toHaveBeenCalledWith('The storm')
+  })
+
+  it('suggests the chapter for a bookmark with no name, ready to accept or type over', () => {
+    const onSave = vi.fn()
+    render(
+      <BookmarkNameDialog
+        passage=""
+        initial=""
+        suggestion="Chapter 3: The Storm"
+        onSave={onSave}
+        onClose={vi.fn()}
+      />,
+    )
+    const input = screen.getByLabelText('Bookmark name') as HTMLInputElement
+    expect(input.value).toBe('Chapter 3: The Storm')
+    expect(input.selectionStart).toBe(0)
+    expect(input.selectionEnd).toBe(input.value.length)
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(onSave).toHaveBeenCalledWith('Chapter 3: The Storm')
   })
 
   it('starts from the current name when renaming', () => {

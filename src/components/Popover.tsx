@@ -18,7 +18,7 @@ interface PopoverProps {
   onClose: () => void
   children: ReactNode
   label: string
-  role?: 'dialog' | 'toolbar'
+  role?: 'dialog' | 'toolbar' | 'tooltip'
   className?: string
   style?: CSSProperties
   /** Keep it open when clicking outside (e.g. while the reader adjusts a selection). */
