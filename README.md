@@ -51,7 +51,6 @@ folder can therefore be synced with Syncthing, Nextcloud or similar without conf
 identified by a fingerprint of their contents, so a renamed or moved file keeps its data. The
 SQLite index in the app's data directory is a cache, rebuilt from the folder.
 
-
 ## Install
 
 CI builds `.rpm` and `.deb` packages on every push to `main` and publishes them as the
