@@ -2994,9 +2994,11 @@ version = "0.1.0"
 dependencies = [
  "blake3",
  "image",
+ "libc",
  "log",
  "notify",
  "notify-debouncer-full",
+ "quick-xml",
  "rusqlite",
  "serde",
  "serde_json",

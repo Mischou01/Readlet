@@ -18,12 +18,19 @@ pub enum Error {
     Image(#[from] image::ImageError),
     #[error("Read-aloud isn't available: {0}")]
     Tts(String),
+    #[error("{0} isn't available on this device")]
+    Unsupported(&'static str),
+    /// A call into the Android side of the app failed.
+    #[cfg(mobile)]
+    #[error("{0}")]
+    Native(String),
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error(transparent)]
     Json(#[from] serde_json::Error),
     #[error(transparent)]
     Sql(#[from] rusqlite::Error),
+    #[cfg(desktop)]
     #[error(transparent)]
     Watch(#[from] notify::Error),
     #[error(transparent)]
@@ -43,9 +50,13 @@ impl Error {
             Self::FolderUnavailable(_) => "folderUnavailable",
             Self::Image(_) => "image",
             Self::Tts(_) => "tts",
+            Self::Unsupported(_) => "unsupported",
+            #[cfg(mobile)]
+            Self::Native(_) => "native",
             Self::Io(_) => "io",
             Self::Json(_) => "json",
             Self::Sql(_) => "index",
+            #[cfg(desktop)]
             Self::Watch(_) => "watch",
             Self::Tauri(_) => "internal",
         }
@@ -58,6 +69,13 @@ impl Serialize for Error {
         state.serialize_field("kind", self.kind())?;
         state.serialize_field("message", &self.to_string())?;
         state.end()
+    }
+}
+
+#[cfg(mobile)]
+impl From<tauri::plugin::mobile::PluginInvokeError> for Error {
+    fn from(e: tauri::plugin::mobile::PluginInvokeError) -> Self {
+        Self::Native(e.to_string())
     }
 }
 

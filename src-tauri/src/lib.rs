@@ -1,6 +1,8 @@
 //! Readlet's Rust core: the library folder, the index, reading data and read-aloud.
 //! See docs/PLAN.md for the architecture.
 
+#[cfg(any(target_os = "android", test))]
+mod android;
 mod aura;
 mod commands;
 mod covers;
@@ -8,6 +10,7 @@ mod error;
 mod fsutil;
 mod index;
 mod library;
+mod platform;
 mod protocol;
 mod settings;
 mod state;
@@ -21,7 +24,10 @@ use state::{AppPaths, AppState};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(target_os = "android")]
+    let builder = builder.plugin(android::init());
+    builder
         .plugin(
             tauri_plugin_log::Builder::new()
                 .targets([
@@ -48,6 +54,24 @@ pub fn run() {
                 }
             }
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            // Nothing watches the folder while a phone app is in the background; catch up when
+            // it comes back.
+            #[cfg(mobile)]
+            match event {
+                tauri::WindowEvent::Resumed => {
+                    window.state::<AppState>().catch_up(window.app_handle());
+                }
+                // The system may stop the app from here on: the UI saves what it has.
+                tauri::WindowEvent::Suspended => {
+                    use tauri::Emitter;
+                    let _ = window.emit(state::events::APP_SUSPENDED, ());
+                }
+                _ => {}
+            }
+            #[cfg(desktop)]
+            let _ = (window, event);
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_app_info,
@@ -80,9 +104,15 @@ pub fn run() {
             commands::export_markdown,
             tts::tts_voices,
             tts::tts_speak,
-            tts::tts_pause,
-            tts::tts_resume,
             tts::tts_stop,
+            tts::tts_session,
+            platform::storage_access,
+            platform::request_storage_access,
+            platform::pick_folder,
+            platform::import_books,
+            platform::set_system_bars,
+            platform::system_insets,
+            platform::move_to_background,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Readlet");

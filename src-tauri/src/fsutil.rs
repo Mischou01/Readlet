@@ -75,7 +75,8 @@ pub fn append_line(path: &Path, line: &str) -> io::Result<()> {
     file.sync_data()
 }
 
-/// Is this file name one of our own temporary files?
+/// Is this file name one of our own temporary files? (The watcher ignores them.)
+#[cfg(desktop)]
 pub fn is_temp_name(name: &str) -> bool {
     name.starts_with('.') && name.ends_with(".tmp")
 }

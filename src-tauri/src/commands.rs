@@ -219,6 +219,9 @@ pub async fn add_books(app: AppHandle, paths: Vec<String>) -> Result<Vec<String>
 #[tauri::command]
 pub async fn reveal_book(app: AppHandle, fingerprint: String) -> Result<()> {
     check_fingerprint(&fingerprint)?;
+    if cfg!(mobile) {
+        return Err(Error::Unsupported("Showing a book in its folder"));
+    }
     blocking(&app, move |state| {
         let (path, _) = state.book_path(&fingerprint)?;
         tauri_plugin_opener::reveal_item_in_dir(path)
