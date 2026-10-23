@@ -71,8 +71,30 @@ function harden(book: Book) {
   }) as EventListener)
 }
 
+let pdfWorker: Worker | undefined
+
+/**
+ * Readlet starts the pdf.js worker itself rather than letting pdf.js load its own script, so the
+ * polyfills pdf.js needs can run there first. One worker serves every PDF.
+ */
+async function preparePdfjs() {
+  await import('./pdfjsPolyfills')
+  await import('foliate-js/pdf.js')
+  pdfWorker ??= new Worker(new URL('./pdfWorker.ts', import.meta.url), { type: 'module' })
+  const { pdfjsLib } = globalThis as unknown as {
+    pdfjsLib: { GlobalWorkerOptions: { workerPort: Worker | null } }
+  }
+  pdfjsLib.GlobalWorkerOptions.workerPort = pdfWorker
+}
+
+async function isPdf(file: Blob): Promise<boolean> {
+  const head = new Uint8Array(await file.slice(0, 5).arrayBuffer())
+  return String.fromCharCode(...head) === '%PDF-'
+}
+
 export async function loadBook(file: File): Promise<Book> {
   try {
+    if (await isPdf(file)) await preparePdfjs()
     const book = await makeBook(file)
     harden(book)
     return book
@@ -80,6 +102,7 @@ export async function loadBook(file: File): Promise<Book> {
     if (e instanceof UnsupportedTypeError) {
       throw new BookOpenError('unsupported', 'Readlet can’t read this kind of file.')
     }
+    console.warn('opening book failed', e)
     throw new BookOpenError('damaged', 'This book seems to be damaged, so it can’t be opened.')
   }
 }

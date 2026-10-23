@@ -39,7 +39,12 @@ export default tseslint.config(
     },
   },
   {
-    files: ['src/reader/foliate.ts', 'src/reader/BookView.tsx', 'src/reader/foliate-js.d.ts'],
+    files: [
+      'src/reader/foliate.ts',
+      'src/reader/BookView.tsx',
+      'src/reader/foliate-js.d.ts',
+      'src/reader/pdfWorker.ts',
+    ],
     rules: { 'no-restricted-imports': 'off' },
   },
 )

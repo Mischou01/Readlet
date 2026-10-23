@@ -1,5 +1,6 @@
 // Types for the parts of foliate-js (vendor/foliate-js, a pinned submodule) that Readlet uses.
-// foliate-js's API is unstable, so only src/reader/foliate.ts and BookView.tsx may import it.
+// foliate-js's API is unstable, so only src/reader/foliate.ts and BookView.tsx may import it (and
+// pdfWorker.ts, which only loads pdf.js's worker).
 
 declare module 'foliate-js/view.js' {
   export type LanguageMap = string | Record<string, string>
@@ -196,3 +197,11 @@ declare module 'foliate-js/footnotes.js' {
     ): Promise<void> | undefined
   }
 }
+
+declare module 'foliate-js/pdf.js' {
+  import type { Book } from 'foliate-js/view.js'
+  /** Also sets `globalThis.pdfjsLib`, pdf.js's API, as a side effect of importing it. */
+  export function makePDF(file: File | Blob): Promise<Book>
+}
+
+declare module 'foliate-js/vendor/pdfjs/pdf.worker.mjs'
