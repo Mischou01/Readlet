@@ -1,4 +1,4 @@
-package io.github.mischou01.readlet.folders
+package io.github.mischou01.readlet.android
 
 import android.Manifest
 import android.app.Activity

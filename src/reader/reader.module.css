@@ -146,6 +146,18 @@
   right: 0;
   bottom: 0;
   pointer-events: none;
+  transition:
+    transform 320ms var(--ease-out),
+    opacity 320ms var(--ease-out);
+}
+
+.footer[data-hidden] {
+  transform: translateY(100%);
+  opacity: 0;
+}
+
+.footer[data-hidden] .seek {
+  pointer-events: none;
 }
 
 .withSheet .footer {
@@ -672,5 +684,76 @@
   .withSheet .book,
   .withSheet .footer {
     right: 0;
+  }
+}
+
+/* Phones: a slimmer toolbar with the back button as an icon, and selection bars on two rows. */
+@media (max-width: 600px) {
+  .toolbar {
+    top: 10px;
+    left: 10px;
+    right: 10px;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 4px;
+    height: 56px;
+    padding: 0 4px;
+  }
+
+  .back {
+    padding: 0 12px;
+  }
+
+  .backLabel {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .titleBlock {
+    align-items: flex-start;
+  }
+
+  .tools {
+    gap: 0;
+  }
+
+  .tools button {
+    width: 40px;
+  }
+
+  .footerText {
+    padding: 0 20px 14px;
+  }
+
+  /* The divider breaks the line: colours on top, actions below. */
+  .selectionBar {
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: calc(100vw - 24px);
+    white-space: normal;
+  }
+
+  .barDivider {
+    flex-basis: calc(100% - 16px);
+    height: 1px;
+    margin: 4px 8px;
+  }
+
+  .barButton {
+    flex: 1 1 0;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    min-width: 0;
+    height: auto;
+    min-height: 52px;
+    padding: 6px 4px;
+    border-radius: 14px;
+    font-size: 12px;
+    line-height: 1.2;
+    text-align: center;
   }
 }

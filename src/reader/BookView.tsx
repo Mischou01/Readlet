@@ -112,6 +112,8 @@ const EDGE_TAP_PX = 56
 const EDGE_TAP_FRACTION = 0.22
 /** How long a tap on the text waits for a second click before it counts as a tap. */
 const DOUBLE_CLICK_MS = 260
+/** How long a touch selection has to stay put before the selection bar shows for it. */
+const SELECTION_SETTLE_MS = 300
 
 /**
  * The box the text is laid out in. foliate's paginator puts each page's iframe in a `#container`
@@ -326,6 +328,7 @@ export function BookView(props: BookViewProps) {
     let wheelLockedUntil = 0
     let pendingTap: ReturnType<typeof setTimeout> | undefined
     const cancelPendingTap = () => clearTimeout(pendingTap)
+    let settlingSelection: ReturnType<typeof setTimeout> | undefined
     const footnotes = new FootnoteHandler()
 
     const onWheel = (e: WheelEvent) => {
@@ -378,10 +381,16 @@ export function BookView(props: BookViewProps) {
           range,
         })
       }
+      // A mouse selection is done when the button comes up. A touch selection is made with a long
+      // press and adjusted with the handles, which send the page no pointer events: it's reported
+      // once it stops changing.
+      let touch = false
       doc.addEventListener('pointerup', () => setTimeout(reportSelection, 0))
       doc.addEventListener('keyup', (e) => e.shiftKey && reportSelection())
       doc.addEventListener('selectionchange', () => {
+        clearTimeout(settlingSelection)
         if (doc.getSelection()?.isCollapsed) callbacks.current.onSelection(null)
+        else if (touch) settlingSelection = setTimeout(reportSelection, SELECTION_SETTLE_MS)
       })
       doc.addEventListener('keydown', (e) => {
         callbacks.current.onActivity()
@@ -400,6 +409,8 @@ export function BookView(props: BookViewProps) {
         if (e.screenX === lastPointer.x && e.screenY === lastPointer.y) return
         lastPointer = { x: e.screenX, y: e.screenY }
         callbacks.current.onActivity()
+        // A moving finger is turning the page or selecting text, not looking for the toolbar.
+        if (e.pointerType === 'touch') return
         callbacks.current.onPointerMove()
         if (e.pointerType === 'mouse') setHoveredNote(noteAt(e.clientX, e.clientY))
       })
@@ -410,6 +421,7 @@ export function BookView(props: BookViewProps) {
       // A second press means a double-click (selecting a word), so a tap still waiting is dropped.
       let lastPress = 0
       doc.addEventListener('pointerdown', (e) => {
+        touch = e.pointerType === 'touch'
         lastPress = e.timeStamp
         cancelPendingTap()
       })
@@ -529,6 +541,7 @@ export function BookView(props: BookViewProps) {
     return () => {
       cancelled = true
       cancelPendingTap()
+      clearTimeout(settlingSelection)
       host.removeEventListener('wheel', onWheel)
       host.removeEventListener('click', onHostClick)
       view.close()

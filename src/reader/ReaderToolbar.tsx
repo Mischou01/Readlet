@@ -6,6 +6,7 @@ import { IconButton } from '../components/Button'
 import controls from '../components/controls.module.css'
 import { WindowControls } from '../components/WindowControls'
 import { useLatest } from '../lib/hooks'
+import { useIsMobile } from '../lib/platform'
 import styles from './reader.module.css'
 
 export type ReaderSheet = 'contents' | 'search' | 'text'
@@ -33,6 +34,7 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
   const contentsIcon = useRef<HTMLSpanElement>(null)
   const bookmarkIcon = useRef<HTMLSpanElement>(null)
   const [landed, setLanded] = useState(0)
+  const mobile = useIsMobile()
   return (
     <header
       className={styles.toolbar}
@@ -50,7 +52,7 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
     >
       <button type="button" className={styles.back} onClick={props.onBack}>
         <ArrowLeft size={18} strokeWidth={1.8} aria-hidden="true" />
-        Library
+        <span className={styles.backLabel}>Library</span>
       </button>
       <div className={styles.titleBlock} data-tauri-drag-region>
         <span className={styles.bookTitle} data-tauri-drag-region>
@@ -120,7 +122,7 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
             onLanded={() => setLanded((n) => n + 1)}
           />
         )}
-        <span className={controls.divider} aria-hidden="true" />
+        {!mobile && <span className={controls.divider} aria-hidden="true" />}
         <WindowControls />
       </div>
     </header>

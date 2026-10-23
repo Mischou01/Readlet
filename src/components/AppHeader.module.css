@@ -73,3 +73,39 @@
     padding-left: 20px;
   }
 }
+
+/* Phones: no brand, the sections on the left. A search field opened in the actions takes the row. */
+@media (max-width: 600px) {
+  .header {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 12px;
+  }
+
+  .brand {
+    display: none;
+  }
+
+  .nav {
+    justify-self: start;
+  }
+
+  .navItem {
+    height: 38px;
+    padding: 0 12px;
+    font-size: 14px;
+  }
+
+  .header:has([role='search']) .nav {
+    display: none;
+  }
+
+  .header:has([role='search']) .actions {
+    grid-column: 1 / -1;
+  }
+
+  .actions [role='search'] {
+    flex: 1;
+    width: auto;
+  }
+}

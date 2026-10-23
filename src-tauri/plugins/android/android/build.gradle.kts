@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "io.github.mischou01.readlet.folders"
+    namespace = "io.github.mischou01.readlet.android"
     compileSdk = 36
 
     defaultConfig {

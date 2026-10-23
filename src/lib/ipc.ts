@@ -11,6 +11,7 @@ import type {
   Profile,
   Resurfaced,
   ScanReport,
+  ScreenInsets,
   Session,
   Shelf,
   StoreChanges,
@@ -49,6 +50,10 @@ export const api = {
 
   /** Android only: its own folder picker. Null if the reader cancelled. */
   pickFolder: () => invoke<string | null>('pick_folder'),
+  /** Android only: how far in from each screen edge to keep controls, in CSS pixels. */
+  screenInsets: () => invoke<ScreenInsets>('screen_insets'),
+  /** Android only: whether Android shows its own menu over selected text. */
+  setNativeTextMenu: (enabled: boolean) => invoke<void>('set_native_text_menu', { enabled }),
   chooseLibrary: (path: string) => invoke<AppInfo>('choose_library', { path }),
   rescanLibrary: () => invoke<void>('rescan_library'),
   listBooks: () => invoke<BookEntry[]>('list_books'),

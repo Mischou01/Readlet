@@ -11,6 +11,8 @@ interface ReaderFooterProps {
   pageLabel?: string
   /** Where the bookmarks are, as fractions of the book. */
   bookmarks: number[]
+  /** Tucked away with the toolbar (on phones). */
+  hidden: boolean
   onSeek: (fraction: number) => void
 }
 
@@ -24,11 +26,12 @@ export function ReaderFooter({
   sectionPages,
   pageLabel,
   bookmarks,
+  hidden,
   onSeek,
 }: ReaderFooterProps) {
   const pct = Math.round(fraction * 1000) / 10
   return (
-    <footer className={styles.footer}>
+    <footer className={styles.footer} data-hidden={hidden || undefined}>
       <div className={styles.footerText}>
         <span className={styles.chapterProgress}>
           <span>{minutesLeft != null ? formatTimeLeft(minutesLeft, 'chapter') : ''}</span>

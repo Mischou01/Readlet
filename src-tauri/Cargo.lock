@@ -3003,9 +3003,9 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
- "tauri-plugin-folders",
  "tauri-plugin-log",
  "tauri-plugin-opener",
+ "tauri-plugin-readlet-android",
  "tempfile",
  "thiserror 2.0.21",
  "uuid",
@@ -3898,15 +3898,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tauri-plugin-folders"
-version = "0.1.0"
-dependencies = [
- "serde",
- "tauri",
- "tauri-plugin",
-]
-
-[[package]]
 name = "tauri-plugin-fs"
 version = "2.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3971,6 +3962,15 @@ dependencies = [
  "url",
  "windows",
  "zbus",
+]
+
+[[package]]
+name = "tauri-plugin-readlet-android"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "tauri",
+ "tauri-plugin",
 ]
 
 [[package]]

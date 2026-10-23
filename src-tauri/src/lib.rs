@@ -23,7 +23,7 @@ use state::{AppPaths, AppState};
 pub fn run() {
     let builder = tauri::Builder::default();
     #[cfg(target_os = "android")]
-    let builder = builder.plugin(tauri_plugin_folders::init());
+    let builder = builder.plugin(tauri_plugin_readlet_android::init());
     builder
         .plugin(
             tauri_plugin_log::Builder::new()
@@ -56,6 +56,8 @@ pub fn run() {
             commands::get_app_info,
             commands::set_preferences,
             commands::pick_folder,
+            commands::screen_insets,
+            commands::set_native_text_menu,
             commands::choose_library,
             commands::rescan_library,
             commands::list_books,

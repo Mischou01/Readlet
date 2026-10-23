@@ -6,6 +6,7 @@ import { Dialog } from './components/Dialog'
 import { Toasts } from './components/Toasts'
 import { HighlightsView } from './highlights/HighlightsView'
 import { api, events, subscribeAll, toAppError } from './lib/ipc'
+import { fitAndroidScreen } from './lib/platform'
 import { handleWindowShortcut } from './lib/window'
 import { addBookFiles } from './library/actions'
 import { indexPendingBooks } from './library/indexer'
@@ -31,6 +32,9 @@ export function App() {
   useEffect(() => {
     void useApp.getState().init()
   }, [])
+
+  const platform = info?.platform
+  useEffect(() => (platform === 'android' ? fitAndroidScreen() : undefined), [platform])
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => void handleWindowShortcut(e)

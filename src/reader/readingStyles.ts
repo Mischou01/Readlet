@@ -70,6 +70,7 @@ html {
   color: ${theme.ink} !important;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  -webkit-tap-highlight-color: transparent;
 }
 body {
   background: transparent !important;

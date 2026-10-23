@@ -6,10 +6,28 @@
   box-sizing: border-box;
 }
 
+/*
+ * The edges of the screen to keep clear: on Android, the camera cutout and any system bar that's
+ * showing (src/lib/platform.ts sets --system-inset-*); elsewhere, what the browser reports.
+ */
+:root {
+  --safe-top: max(var(--system-inset-top, 0px), env(safe-area-inset-top, 0px));
+  --safe-right: max(var(--system-inset-right, 0px), env(safe-area-inset-right, 0px));
+  --safe-bottom: max(var(--system-inset-bottom, 0px), env(safe-area-inset-bottom, 0px));
+  --safe-left: max(var(--system-inset-left, 0px), env(safe-area-inset-left, 0px));
+  /* Touch screens flash a box over whatever is tapped; the controls show their own states. */
+  -webkit-tap-highlight-color: transparent;
+}
+
 html,
 body,
 #root {
   height: 100%;
+}
+
+/* The body's background, which follows the theme, fills the edges kept clear. */
+#root {
+  padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
 }
 
 body {

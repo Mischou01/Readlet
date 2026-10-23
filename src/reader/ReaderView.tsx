@@ -11,6 +11,7 @@ import { HIGHLIGHTS } from '../lib/highlightColors'
 import { newId } from '../lib/ids'
 import { api, toAppError } from '../lib/ipc'
 import { bookTitle } from '../lib/text'
+import { useIsMobile } from '../lib/platform'
 import { handleWindowShortcut } from '../lib/window'
 import type { Annotation, BookRecord, HighlightColor } from '../lib/types'
 import { FINISHED_FRACTION, liveAnnotations, statusOf } from '../library/model'
@@ -329,13 +330,17 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
     return () => clearTimeout(timer)
   }, [keepChrome, chromeVisible, pokes])
   const toolbarHidden = !keepChrome && !chromeVisible
+  // A phone has no room to spare: the footer goes with the toolbar. On a desktop it stays, like
+  // the page numbers in a printed book.
+  const mobile = useIsMobile()
 
   const lastPointer = useRef({ x: -1, y: -1 })
   const onPointerMove = (e: React.PointerEvent) => {
     if (e.clientX === lastPointer.current.x && e.clientY === lastPointer.current.y) return
     lastPointer.current = { x: e.clientX, y: e.clientY }
     session.activity()
-    showChrome()
+    // Fingers move to swipe and scroll; a tap shows the toolbar instead.
+    if (e.pointerType !== 'touch') showChrome()
   }
 
   // -- Annotations ------------------------------------------------------------------------------
@@ -831,6 +836,7 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
           sectionPages={sectionPages}
           pageLabel={location?.pageItem?.label}
           bookmarks={bookmarkFractions}
+          hidden={mobile && toolbarHidden}
           onSeek={seek}
         />
       )}
