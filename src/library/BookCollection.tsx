@@ -9,6 +9,7 @@ import { Menu, MenuButton, type MenuAnchor, type MenuEntry } from '../components
 import { ProgressBar } from '../components/Progress'
 import { formatAuthors, formatDay, formatPercent, pluralize } from '../lib/format'
 import { newId } from '../lib/ids'
+import { isAndroid, usePhoneLayout } from '../lib/platform'
 import type { ReadingStatus, Shelf } from '../lib/types'
 import { useApp } from '../state/app'
 import { useVisibleShelves } from '../state/library'
@@ -312,6 +313,7 @@ function SelectToggle({ book, selection }: Pick<ItemProps, 'book' | 'selection'>
 
 function BookTile({ book, selection, onClick, onMenu }: ItemProps) {
   const selected = selection.selecting && selection.has(book.fingerprint)
+  const phone = usePhoneLayout()
   return (
     <li
       className={styles.tile}
@@ -325,7 +327,12 @@ function BookTile({ book, selection, onClick, onMenu }: ItemProps) {
         aria-pressed={selection.selecting ? selected : undefined}
         onClick={(e) => onClick(book, e)}
       >
-        <Cover entry={book.entry} title={book.title} authors={book.authors} width={150} />
+        <Cover
+          entry={book.entry}
+          title={book.title}
+          authors={book.authors}
+          width={phone ? 'fill' : 150}
+        />
         <span className={styles.tileTitle} title={book.title}>
           {book.title}
         </span>
@@ -467,7 +474,16 @@ function bookMenuItems(
           },
         ]
       : []),
-    { id: 'reveal', label: 'Show in folder', onSelect: () => void revealBook(book.fingerprint) },
+    // Android has no file manager to hand a file to.
+    ...(isAndroid
+      ? []
+      : [
+          {
+            id: 'reveal',
+            label: 'Show in folder',
+            onSelect: () => void revealBook(book.fingerprint),
+          },
+        ]),
     { id: 'select', label: 'Select', onSelect: actions.select },
     { separator: true, id: 's1' },
     { heading: 'Mark as', id: 'h-status' },

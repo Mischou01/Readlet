@@ -8,7 +8,16 @@
 // of the paragraph.
 
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
-import { api, events, toAppError, type TtsEvent, type Voice } from '../lib/ipc'
+import { useLatest } from '../lib/hooks'
+import {
+  api,
+  events,
+  subscribeAll,
+  toAppError,
+  type RemoteAction,
+  type TtsEvent,
+  type Voice,
+} from '../lib/ipc'
 import { usePreferences } from '../state/preferences'
 import { useToasts } from '../state/toasts'
 import type { BookViewHandle } from './BookView'
@@ -46,10 +55,32 @@ interface Options {
   active: boolean
   language: string | null
   accent: string
+  /** What's being read, for the system's media controls (the lock screen on Android). */
+  book: { fingerprint: string; title: string; chapter: string | null }
   onEnded: () => void
 }
 
-export function useReadAloud({ handle, active, language, accent, onEnded }: Options): ReadAloud {
+/**
+ * The paragraph at `range`, as SSML. tts.js throws when nothing readable follows the range (on a
+ * page that is only an image, such as a cover); then there's nothing here and reading moves on.
+ */
+function speakableFrom(tts: { from: (range: Range) => string | undefined }, range: Range) {
+  try {
+    return tts.from(range)
+  } catch (e) {
+    if (e instanceof TypeError) return undefined
+    throw e
+  }
+}
+
+export function useReadAloud({
+  handle,
+  active,
+  language,
+  accent,
+  book,
+  onEnded,
+}: Options): ReadAloud {
   const speed = usePreferences((s) => s.prefs.readAloud.rate)
   const voice = usePreferences((s) => s.prefs.readAloud.voice)
   const update = usePreferences((s) => s.update)
@@ -170,6 +201,9 @@ export function useReadAloud({ handle, active, language, accent, onEnded }: Opti
         } else if (event.kind === 'end') {
           if (passage.current) finish()
           else advance().catch(fail)
+        } else if (event.kind === 'error') {
+          void api.ttsStop().catch(() => {})
+          fail(new Error(event.error ?? 'Read-aloud stopped'))
         }
       })
       .then((fn) => (disposed ? fn() : (unlisten = fn)))
@@ -196,6 +230,22 @@ export function useReadAloud({ handle, active, language, accent, onEnded }: Opti
     },
     [],
   )
+
+  // The system's media controls (Android's notification and lock screen) follow along; they also
+  // keep reading going with the screen off.
+  const playing = status === 'playing' || status === 'loading'
+  const showSession = active && status !== 'idle' && status !== 'error'
+  const { fingerprint, title, chapter } = book
+  useEffect(() => {
+    if (!showSession) return
+    api
+      .ttsSession({ title, chapter, fingerprint, playing })
+      .catch((e) => console.warn('updating the media controls failed', e))
+  }, [showSession, title, chapter, fingerprint, playing])
+  useEffect(() => {
+    if (!showSession) return
+    return () => void api.ttsSession(null).catch(() => {})
+  }, [showSession])
 
   // Voices, once read-aloud is first used.
   useEffect(() => {
@@ -224,7 +274,7 @@ export function useReadAloud({ handle, active, language, accent, onEnded }: Opti
       void (async () => {
         const tts = await ensureTts()
         const range = from ?? view()?.lastLocation?.range
-        const ssml = range ? tts.from(range) : tts.start()
+        const ssml = range ? speakableFrom(tts, range) : tts.start()
         if (ssml) await speak(ssml, true)
         else await advance()
       })().catch(fail)
@@ -293,6 +343,33 @@ export function useReadAloud({ handle, active, language, accent, onEnded }: Opti
     },
     [ensureTts, speak, advance, finish, fail],
   )
+
+  // Media controls used outside the app: the lock screen, the notification, a headset button.
+  const remote = useLatest((action: RemoteAction) => {
+    if (stopped.current && action !== 'play') return
+    switch (action) {
+      case 'play':
+        if (status === 'paused') resume()
+        else if (status === 'idle' && active) start()
+        break
+      case 'pause':
+        if (status === 'playing' || status === 'loading') pause()
+        break
+      case 'toggle':
+        toggle()
+        break
+      case 'next':
+        jump(1)
+        break
+      case 'previous':
+        jump(-1)
+        break
+      case 'stop':
+        finish()
+        break
+    }
+  })
+  useEffect(() => subscribeAll([events.onTtsRemote((action) => remote.current(action))]), [remote])
 
   return {
     status,

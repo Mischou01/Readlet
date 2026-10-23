@@ -89,13 +89,43 @@ export const api = {
     invoke<number>('export_markdown', { dir, files }),
 
   ttsVoices: () => invoke<Voice[]>('tts_voices'),
-  /** Returns Speech Dispatcher's message id; events for other ids are stale. */
+  /** Returns the message id; events for other ids are stale. */
   ttsSpeak: (ssml: string, speed: number, voice: string | null, language: string | null) =>
     invoke<number>('tts_speak', { ssml, speed, voice, language }),
-  ttsPause: () => invoke<void>('tts_pause'),
-  ttsResume: () => invoke<void>('tts_resume'),
   ttsStop: () => invoke<void>('tts_stop'),
+  /** Shows read-aloud in the system's media controls (Android), or removes it with `null`. */
+  ttsSession: (session: PlaybackSession | null) => invoke<void>('tts_session', { session }),
+
+  // Android (the desktop has trivial answers or uses Tauri's plugins instead).
+  storageAccess: () => invoke<boolean>('storage_access'),
+  requestStorageAccess: () => invoke<boolean>('request_storage_access'),
+  pickFolder: () => invoke<string | null>('pick_folder'),
+  /** Picks book files with the system's picker and copies them in; returns the added names, or
+   * `null` if nothing was picked. */
+  importBooks: () => invoke<string[] | null>('import_books'),
+  setSystemBars: (bars: { dark: boolean; hidden: boolean }) =>
+    invoke<void>('set_system_bars', { bars }),
+  systemInsets: () => invoke<Insets>('system_insets'),
+  moveToBackground: () => invoke<void>('move_to_background'),
 }
+
+export interface PlaybackSession {
+  title: string
+  chapter: string | null
+  fingerprint: string | null
+  playing: boolean
+}
+
+/** Space taken by the system bars and display cutouts, in CSS pixels. */
+export interface Insets {
+  top: number
+  right: number
+  bottom: number
+  left: number
+}
+
+/** A read-aloud control used outside the app: the lock screen, notification or a headset. */
+export type RemoteAction = 'play' | 'pause' | 'toggle' | 'next' | 'previous' | 'stop'
 
 export interface Voice {
   name: string
@@ -104,9 +134,11 @@ export interface Voice {
 }
 
 export interface TtsEvent {
-  kind: 'begin' | 'end' | 'canceled' | 'paused' | 'resumed' | 'mark'
+  kind: 'begin' | 'end' | 'canceled' | 'paused' | 'resumed' | 'mark' | 'error'
   message: number
   mark?: string
+  /** Why speaking failed (`error`). */
+  error?: string
 }
 
 export const events = {
@@ -118,6 +150,13 @@ export const events = {
     listen<StoreChanges>('store:changed', (e) => handler(e.payload)),
   onTts: (handler: (event: TtsEvent) => void): Promise<UnlistenFn> =>
     listen<TtsEvent>('tts:event', (e) => handler(e.payload)),
+  onTtsRemote: (handler: (action: RemoteAction) => void): Promise<UnlistenFn> =>
+    listen<RemoteAction>('tts:remote', (e) => handler(e.payload)),
+  onInsets: (handler: (insets: Insets) => void): Promise<UnlistenFn> =>
+    listen<Insets>('system:insets', (e) => handler(e.payload)),
+  /** The app went to the background (mobile). */
+  onSuspended: (handler: () => void): Promise<UnlistenFn> =>
+    listen('app:suspended', () => handler()),
 }
 
 /** Normalises anything thrown by a command (or by JS) into `{ kind, message }`. */

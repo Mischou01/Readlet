@@ -45,6 +45,8 @@ export interface BookLayout {
   maxColumnCount: number
   /** Space above and below the text in px. */
   margin: number
+  /** Space beside the text, as a CSS length (a percentage of the page). */
+  gap: string
   animated: boolean
 }
 
@@ -110,6 +112,13 @@ const WHEEL_COOLDOWN_MS = 450
 const EDGE_TAP_PX = 56
 /** Where a tap turns the page when the text area is unknown (fixed layouts): the outer 22%. */
 const EDGE_TAP_FRACTION = 0.22
+/**
+ * On a touch screen the text fills the page, so taps in the outer 30% on each side turn it,
+ * whatever is under the finger; the middle shows the toolbar.
+ */
+const TOUCH_TAP_FRACTION = 0.3
+/** How long a touch selection must hold still before its toolbar shows (handles may be moving). */
+const TOUCH_SELECTION_SETTLE_MS = 350
 /** How long a tap on the text waits for a second click before it counts as a tap. */
 const DOUBLE_CLICK_MS = 260
 
@@ -127,7 +136,7 @@ function applyLayout(view: View, layout: BookLayout) {
   const r = view.renderer
   r.setAttribute('flow', layout.scrolled ? 'scrolled' : 'paginated')
   r.setAttribute('margin', `${layout.margin}px`)
-  r.setAttribute('gap', '6%')
+  r.setAttribute('gap', layout.gap)
   r.setAttribute('max-inline-size', `${layout.maxInlineSize}px`)
   r.setAttribute('max-column-count', String(layout.maxColumnCount))
   r.toggleAttribute('animated', layout.animated)
@@ -326,6 +335,9 @@ export function BookView(props: BookViewProps) {
     let wheelLockedUntil = 0
     let pendingTap: ReturnType<typeof setTimeout> | undefined
     const cancelPendingTap = () => clearTimeout(pendingTap)
+    /** Whether the last press was a finger rather than a mouse or pen. */
+    let touch = false
+    let settleSelection: ReturnType<typeof setTimeout> | undefined
     const footnotes = new FootnoteHandler()
 
     const onWheel = (e: WheelEvent) => {
@@ -344,6 +356,10 @@ export function BookView(props: BookViewProps) {
     // Pages turn from the margins beside the text; a click on the text itself shows the chrome.
     const zoneAt = (x: number): TapZone => {
       const box = host.getBoundingClientRect()
+      if (touch) {
+        const edge = box.width * TOUCH_TAP_FRACTION
+        return x < box.left + edge ? 'left' : x > box.right - edge ? 'right' : 'center'
+      }
       const text = textArea?.isConnected ? textArea.getBoundingClientRect() : null
       const left = text
         ? Math.max(text.left, box.left + EDGE_TAP_PX)
@@ -354,6 +370,9 @@ export function BookView(props: BookViewProps) {
       return x < left ? 'left' : x > right ? 'right' : 'center'
     }
 
+    const onHostPointerDown = (e: PointerEvent) => {
+      touch = e.pointerType === 'touch'
+    }
     // Clicks in the margins land on the view itself, outside the page's iframe.
     const onHostClick = (e: MouseEvent) => {
       callbacks.current.onActivity()
@@ -381,7 +400,11 @@ export function BookView(props: BookViewProps) {
       doc.addEventListener('pointerup', () => setTimeout(reportSelection, 0))
       doc.addEventListener('keyup', (e) => e.shiftKey && reportSelection())
       doc.addEventListener('selectionchange', () => {
+        clearTimeout(settleSelection)
         if (doc.getSelection()?.isCollapsed) callbacks.current.onSelection(null)
+        // A long press selects a word and the handles adjust it, with no pointerup in the page:
+        // report the selection once it settles.
+        else if (touch) settleSelection = setTimeout(reportSelection, TOUCH_SELECTION_SETTLE_MS)
       })
       doc.addEventListener('keydown', (e) => {
         callbacks.current.onActivity()
@@ -411,6 +434,7 @@ export function BookView(props: BookViewProps) {
       let lastPress = 0
       doc.addEventListener('pointerdown', (e) => {
         lastPress = e.timeStamp
+        touch = e.pointerType === 'touch'
         cancelPendingTap()
       })
       doc.addEventListener('click', (e) => {
@@ -428,9 +452,10 @@ export function BookView(props: BookViewProps) {
             return
           }
           const zone = zoneAt(x)
-          // Margins turn the page at once. A tap on the text waits to see whether it's the start
+          // Margins turn the page at once. A click on the text waits to see whether it's the start
           // of a double-click, so selecting a word doesn't flash the toolbar or the selection bar.
-          if (zone !== 'center') {
+          // (Touch selects with a long press instead, so taps needn't wait.)
+          if (zone !== 'center' || touch) {
             callbacks.current.onTap(zone)
             return
           }
@@ -508,6 +533,7 @@ export function BookView(props: BookViewProps) {
     }) as EventListener)
 
     host.addEventListener('wheel', onWheel, { passive: true })
+    host.addEventListener('pointerdown', onHostPointerDown)
     host.addEventListener('click', onHostClick)
 
     ;(async () => {
@@ -529,7 +555,9 @@ export function BookView(props: BookViewProps) {
     return () => {
       cancelled = true
       cancelPendingTap()
+      clearTimeout(settleSelection)
       host.removeEventListener('wheel', onWheel)
+      host.removeEventListener('pointerdown', onHostPointerDown)
       host.removeEventListener('click', onHostClick)
       view.close()
       view.remove()

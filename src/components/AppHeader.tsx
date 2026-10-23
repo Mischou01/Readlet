@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react'
 import { useApp, type Section } from '../state/app'
-import controls from './controls.module.css'
 import styles from './AppHeader.module.css'
 import { Logo } from './Logo'
 import { WindowControls } from './WindowControls'
@@ -35,7 +34,6 @@ export function AppHeader({ section, actions }: { section: Section; actions?: Re
       </nav>
       <div className={styles.actions} data-tauri-drag-region>
         {actions}
-        <span className={controls.divider} aria-hidden="true" />
         <WindowControls />
       </div>
     </header>

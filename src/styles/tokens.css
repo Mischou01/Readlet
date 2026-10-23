@@ -64,6 +64,23 @@
 
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --duration: 220ms;
+
+  /* Space the system bars and display cutouts take on a phone (0 on the desktop). Newer WebViews
+     report it as safe-area-inset-*; src/lib/platform.ts also sets it from the Android side. */
+  --safe-top: max(env(safe-area-inset-top, 0px), var(--native-inset-top, 0px));
+  --safe-right: max(env(safe-area-inset-right, 0px), var(--native-inset-right, 0px));
+  --safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--native-inset-bottom, 0px));
+  --safe-left: max(env(safe-area-inset-left, 0px), var(--native-inset-left, 0px));
+  /* How much of the page the on-screen keyboard covers. */
+  --keyboard-inset: 0px;
+  /* Room to leave at the bottom of a page for the navigation dock (phones only). */
+  --dock-space: 0px;
+}
+
+@media (max-width: 640px) {
+  :root {
+    --dock-space: calc(84px + var(--safe-bottom));
+  }
 }
 
 :root[data-theme='dark'] {

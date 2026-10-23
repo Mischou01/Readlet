@@ -4,6 +4,7 @@ import { AppHeader } from '../components/AppHeader'
 import { AuraField } from '../components/AuraField'
 import { Button, IconButton } from '../components/Button'
 import { pluralize } from '../lib/format'
+import { isAndroid } from '../lib/platform'
 import { useApp } from '../state/app'
 import { useLibrary, useLibraryBooks } from '../state/library'
 import { useAuraFor } from '../theme/aura'
@@ -144,8 +145,10 @@ function EmptyLibrary() {
     <div className={styles.emptyLibrary}>
       <h1>Your shelves are waiting</h1>
       <p>
-        There are no books in {root ? <strong>{root}</strong> : 'your books folder'} yet. Add some,
-        or drop EPUB, MOBI, AZW3, FB2, CBZ or PDF (experimental) files anywhere in this window.
+        There are no books in {root ? <strong>{root}</strong> : 'your books folder'} yet.{' '}
+        {isAndroid
+          ? 'Add some, or put EPUB, MOBI, AZW3, FB2, CBZ or PDF (experimental) files in that folder.'
+          : 'Add some, or drop EPUB, MOBI, AZW3, FB2, CBZ or PDF (experimental) files anywhere in this window.'}
       </p>
       <div className={styles.heroActions}>
         <Button

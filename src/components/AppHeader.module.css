@@ -5,7 +5,7 @@
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
   gap: 16px;
-  padding: 14px 20px 14px 32px;
+  padding: calc(14px + var(--safe-top)) 20px 14px 32px;
 }
 
 .brand {
@@ -71,5 +71,33 @@
   }
   .header {
     padding-left: 20px;
+  }
+}
+
+/* Phones: the sections become a glass dock at the bottom, within reach of a thumb. */
+@media (max-width: 640px) {
+  .header {
+    display: flex;
+    justify-content: space-between;
+    padding: calc(10px + var(--safe-top)) 14px 6px 18px;
+  }
+
+  .actions {
+    flex: 1;
+    gap: 6px;
+  }
+
+  .nav {
+    position: fixed;
+    z-index: 30;
+    left: 50%;
+    bottom: calc(14px + var(--safe-bottom));
+    transform: translateX(-50%);
+    box-shadow: var(--glass-shadow);
+  }
+
+  .navItem {
+    padding: 0 18px;
+    height: 46px;
   }
 }

@@ -57,7 +57,14 @@ function setUp() {
   const handle = { current: { markSpeaking, view: () => null } as unknown as BookViewHandle }
   const onEnded = vi.fn()
   const hook = renderHook(() =>
-    useReadAloud({ handle, active: true, language: 'en', accent: '#336699', onEnded }),
+    useReadAloud({
+      handle,
+      active: true,
+      language: 'en',
+      accent: '#336699',
+      book: { fingerprint: 'f'.repeat(32), title: 'Walden', chapter: null },
+      onEnded,
+    }),
   )
   return { hook, range, markSpeaking, onEnded }
 }

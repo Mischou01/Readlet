@@ -26,6 +26,9 @@ body {
   overscroll-behavior: none;
   user-select: none;
   -webkit-user-select: none;
+  /* Touch: no grey flash on tapped controls, and no waiting to see if a tap is a double tap. */
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 
 button,

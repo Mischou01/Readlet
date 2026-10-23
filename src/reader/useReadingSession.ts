@@ -7,7 +7,7 @@ import { countWords } from '../lib/text'
 import type { Session } from '../lib/types'
 import { usePreferences } from '../state/preferences'
 import { useStats } from '../state/stats'
-import { SessionTracker, updatedReadingSpeed } from '../stats/sessionTracker'
+import { MIN_SESSION_MS, SessionTracker, updatedReadingSpeed } from '../stats/sessionTracker'
 
 const TICK_MS = 5_000
 
@@ -18,6 +18,11 @@ export interface ReadingSession {
   relocated: (fraction: number, visibleText: string, bookBytes: number) => void
   /** Records the session now (closing the book or the window). */
   finish: () => Promise<void>
+  /**
+   * Saves the session so far without ending it (the app went to the background). If the app is
+   * stopped, it's recorded when Readlet next starts.
+   */
+  checkpoint: () => void
 }
 
 export function useReadingSession(
@@ -80,5 +85,11 @@ export function useReadingSession(
     if (t) await record(t.finish())
   }, [record])
 
-  return { activity, relocated, finish }
+  const checkpoint = useCallback(() => {
+    const current = tracker.current?.current
+    if (current && current.activeMs >= MIN_SESSION_MS)
+      api.checkpointSession(current).catch((e) => console.warn('checkpoint failed', e))
+  }, [])
+
+  return { activity, relocated, finish, checkpoint }
 }
