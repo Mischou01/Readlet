@@ -1,11 +1,13 @@
 # Checks every push and pull request: types, lint, formatting and tests for the UI and the Rust
-# core. Pushes to main also build the Linux packages and publish them as a pre-release.
+# core. Pushes to main (and manual runs on main) also build the Linux packages and an Android test
+# APK and publish them as a pre-release.
 name: CI
 
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -60,13 +62,41 @@ jobs:
       - name: Rust tests
         run: cargo test --manifest-path src-tauri/Cargo.toml
 
-  bundle:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+  # A rolling pre-release rather than workflow artifacts: release files don't count against the
+  # account's Actions storage quota. It's recreated empty so it points at this commit, and each
+  # build job below uploads its own files as it finishes.
+  release:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: check
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+    timeout-minutes: 5
+    steps:
+      - name: Recreate the "main-build" pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if gh release view main-build > /dev/null 2>&1; then
+            gh release delete main-build --cleanup-tag --yes
+          fi
+          gh release create main-build --prerelease --target "$GITHUB_SHA" \
+            --title "Latest build from main" \
+            --notes "Built from $GITHUB_SHA. Replaced on every push to main.
+
+          The Android APK is a test build for arm64 phones, signed with a throwaway key made for each
+          build: to install a newer one, uninstall the old one first (that clears its data)."
+
+  bundle:
+    needs: release
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     timeout-minutes: 45
+    env:
+      # linuxdeploy is itself an AppImage, and the runner has no FUSE 2 to mount it.
+      APPIMAGE_EXTRACT_AND_RUN: 1
     steps:
       - uses: actions/checkout@v4
         with:
@@ -89,20 +119,81 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
-      - name: Build packages
+      # The AppImage is built after the others are uploaded, so a problem with it can't hold them
+      # back.
+      - name: Build the DEB and RPM
         run: bun run tauri build --bundles deb,rpm
 
-      # A rolling pre-release rather than workflow artifacts: release files don't count against the
-      # account's Actions storage quota.
-      - name: Publish the packages as the "main-build" pre-release
+      - name: Upload the DEB and RPM to the "main-build" pre-release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view main-build > /dev/null 2>&1; then
-            gh release delete main-build --cleanup-tag --yes
-          fi
-          gh release create main-build --prerelease --target "$GITHUB_SHA" \
-            --title "Latest build from main" \
-            --notes "Built from $GITHUB_SHA. Replaced on every push to main." \
+          gh release upload main-build \
             src-tauri/target/release/bundle/deb/*.deb \
             src-tauri/target/release/bundle/rpm/*.rpm
+
+      - name: Build the AppImage
+        run: bun run tauri build --bundles appimage
+
+      - name: Upload the AppImage to the "main-build" pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload main-build src-tauri/target/release/bundle/appimage/*.AppImage
+
+  # The Android project (src-tauri/gen/android) is generated here rather than kept in the repo,
+  # until Readlet is ported to Android for real.
+  android:
+    needs: release
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: bun install --frozen-lockfile
+
+      # The runner image ships the Android SDK and NDK; Tauri looks for the NDK in NDK_HOME.
+      - name: Generate the Android project
+        run: |
+          echo "NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> "$GITHUB_ENV"
+          NDK_HOME="$ANDROID_NDK_LATEST_HOME" bun run tauri android init --ci --skip-targets-install
+          bun run tauri icon assets/icon.svg
+
+      - name: Build the APK
+        run: bun run tauri android build --ci --apk --target aarch64
+
+      - name: Sign the APK
+        run: |
+          build_tools="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
+          unsigned=$(find src-tauri/gen/android/app/build/outputs/apk -name '*-release-unsigned.apk' | head -1)
+          version=$(jq -r .version src-tauri/tauri.conf.json)
+          keytool -genkeypair -keystore "$RUNNER_TEMP/ci.jks" -storepass ci-build -keypass ci-build \
+            -alias readlet -keyalg RSA -keysize 2048 -validity 3650 -dname "CN=Readlet CI build"
+          "$build_tools/zipalign" -f -p 4 "$unsigned" "$RUNNER_TEMP/aligned.apk"
+          "$build_tools/apksigner" sign --ks "$RUNNER_TEMP/ci.jks" --ks-pass pass:ci-build \
+            --ks-key-alias readlet --out "Readlet_${version}_arm64.apk" "$RUNNER_TEMP/aligned.apk"
+
+      - name: Upload the APK to the "main-build" pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload main-build Readlet_*_arm64.apk
