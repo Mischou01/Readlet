@@ -1,4 +1,4 @@
-import { Bookmark, Trash2 } from 'lucide-react'
+import { Bookmark, PencilLine, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { IconButton } from '../components/Button'
 import { Segmented } from '../components/Fields'
@@ -19,6 +19,7 @@ interface ContentsSheetProps {
   bookmarkedTocIds: ReadonlySet<number>
   highlights: Annotation[]
   onGoTo: (target: string) => void
+  onRenameBookmark: (annotation: Annotation) => void
   onDeleteBookmark: (annotation: Annotation) => void
   onClose: () => void
 }
@@ -84,8 +85,21 @@ export function ContentsSheet(props: ContentsSheetProps) {
                       .filter(Boolean)
                       .join(' · ')}
                   </span>
-                  <span className={styles.listText}>{b.text || 'Bookmark'}</span>
+                  {b.name ? (
+                    <>
+                      <span className={`${styles.listText} ${styles.bookmarkName}`}>{b.name}</span>
+                      {b.text && <span className={styles.listExcerpt}>{b.text}</span>}
+                    </>
+                  ) : (
+                    <span className={styles.listText}>{b.text || 'Bookmark'}</span>
+                  )}
                 </button>
+                <IconButton
+                  label={b.name ? 'Rename bookmark' : 'Name bookmark'}
+                  onClick={() => props.onRenameBookmark(b)}
+                >
+                  <PencilLine size={16} strokeWidth={1.8} aria-hidden="true" />
+                </IconButton>
                 <IconButton label="Delete bookmark" onClick={() => props.onDeleteBookmark(b)}>
                   <Trash2 size={16} strokeWidth={1.8} aria-hidden="true" />
                 </IconButton>
@@ -93,7 +107,8 @@ export function ContentsSheet(props: ContentsSheetProps) {
             ))
           ) : (
             <p className={styles.emptyNote}>
-              No bookmarks yet. Use the bookmark button in the toolbar to mark the page you’re on.
+              No bookmarks yet. Use the bookmark button in the toolbar to mark the page you’re on,
+              then give it a name here if you like.
             </p>
           ))}
         {tab === 'highlights' &&

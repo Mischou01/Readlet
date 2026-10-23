@@ -160,6 +160,56 @@ export function NoteDialog({ quote, initial, onSave, onClose }: NoteDialogProps)
   )
 }
 
+interface BookmarkNameDialogProps {
+  /** The passage the bookmark is on, as a reminder of where it is. */
+  passage: string
+  initial: string
+  onSave: (name: string) => void
+  onClose: () => void
+}
+
+/** Names or renames a bookmark. Saving an empty name clears it. */
+export function BookmarkNameDialog({ passage, initial, onSave, onClose }: BookmarkNameDialogProps) {
+  const [name, setName] = useState(initial)
+  return (
+    <Dialog
+      title={initial ? 'Rename bookmark' : 'Name this bookmark'}
+      onClose={onClose}
+      actions={
+        <>
+          <Button variant="quiet" size="small" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button variant="primary" size="small" onClick={() => onSave(name.trim())}>
+            Save
+          </Button>
+        </>
+      }
+    >
+      {passage && <p className={styles.quote}>{passage}</p>}
+      <label className="visually-hidden" htmlFor="bookmark-name">
+        Bookmark name
+      </label>
+      <input
+        id="bookmark-name"
+        className={fieldStyles.textInput}
+        style={{ marginTop: 14 }}
+        value={name}
+        maxLength={200}
+        placeholder="Where the storm begins"
+        autoComplete="off"
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            onSave(name.trim())
+          }
+        }}
+      />
+    </Dialog>
+  )
+}
+
 interface DefinitionPopoverProps {
   anchor: DOMRect
   selection: string

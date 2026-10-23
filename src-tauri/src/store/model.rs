@@ -47,6 +47,9 @@ pub struct Annotation {
     pub color: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
+    /// A bookmark's name, if the reader gave it one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chapter: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

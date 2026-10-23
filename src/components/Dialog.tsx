@@ -25,7 +25,14 @@ export function Dialog({ title, description, onClose, children, actions }: Dialo
     return () => previous?.focus?.()
   }, [])
 
-  const trapFocus = (e: KeyboardEvent) => {
+  const onKeyDown = (e: KeyboardEvent) => {
+    // Window-level Escape handlers run in the order they were added, so a sheet under this dialog
+    // would otherwise close first. Handling it here marks the key as handled before they see it.
+    if (e.key === 'Escape' && !e.defaultPrevented) {
+      e.preventDefault()
+      onClose()
+      return
+    }
     if (e.key !== 'Tab' || !ref.current) return
     const focusable = Array.from(
       ref.current.querySelectorAll<HTMLElement>(
@@ -62,7 +69,7 @@ export function Dialog({ title, description, onClose, children, actions }: Dialo
         initial={{ opacity: 0, y: 12, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-        onKeyDown={trapFocus}
+        onKeyDown={onKeyDown}
       >
         <h2 id={titleId}>{title}</h2>
         {description && <p className={styles.dialogDescription}>{description}</p>}

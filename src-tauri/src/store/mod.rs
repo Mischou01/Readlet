@@ -451,6 +451,7 @@ mod tests {
             text: "Call".into(),
             color: Some("sky".into()),
             note: None,
+            name: None,
             chapter: None,
             fraction: Some(0.1),
             created_at: at,

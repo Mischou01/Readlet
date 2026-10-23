@@ -416,6 +416,24 @@
   -webkit-box-orient: vertical;
 }
 
+.bookmarkName {
+  font-family: var(--font-ui);
+  font-weight: 600;
+  -webkit-line-clamp: 2;
+}
+
+.listExcerpt {
+  display: -webkit-box;
+  margin-top: 4px;
+  font-family: var(--font-reading);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--haze);
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
 .emptyNote {
   padding: 12px;
   font-size: 14px;

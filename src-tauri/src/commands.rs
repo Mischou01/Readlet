@@ -304,6 +304,7 @@ pub struct AnnotationInput {
     text: String,
     color: Option<String>,
     note: Option<String>,
+    name: Option<String>,
     chapter: Option<String>,
     fraction: Option<f64>,
 }
@@ -320,6 +321,9 @@ impl AnnotationInput {
             ("highlight", _) => return Err(Error::invalid("unknown highlight colour")),
             (_, Some(_)) => return Err(Error::invalid("only highlights have a colour")),
             _ => {}
+        }
+        if self.name.is_some() && self.kind != "bookmark" {
+            return Err(Error::invalid("only bookmarks have a name"));
         }
         if let Some(fraction) = self.fraction {
             model::validate_fraction(fraction)?;
@@ -351,6 +355,10 @@ pub async fn put_annotation(
                 .note
                 .map(|n| model::limit_text(&n, 20_000))
                 .filter(|n| !n.trim().is_empty());
+            let name = annotation
+                .name
+                .map(|n| model::limit_text(n.trim(), 200))
+                .filter(|n| !n.is_empty());
             let new = Annotation {
                 id: annotation.id,
                 kind: annotation.kind,
@@ -358,6 +366,7 @@ pub async fn put_annotation(
                 text: model::limit_text(&annotation.text, 10_000),
                 color: annotation.color,
                 note,
+                name,
                 chapter: annotation.chapter.map(|c| model::limit_text(&c, 300)),
                 fraction: annotation.fraction,
                 created_at,
@@ -609,6 +618,7 @@ mod tests {
             text: "Hi".into(),
             color: color.map(Into::into),
             note: None,
+            name: None,
             chapter: None,
             fraction: Some(0.5),
         }
@@ -622,6 +632,13 @@ mod tests {
         assert!(input("bookmark", None).validate().is_ok());
         assert!(input("bookmark", Some("mint")).validate().is_err());
         assert!(input("scribble", None).validate().is_err());
+
+        let named = |kind: &str, color: Option<&str>| AnnotationInput {
+            name: Some("The storm".into()),
+            ..input(kind, color)
+        };
+        assert!(named("bookmark", None).validate().is_ok());
+        assert!(named("highlight", Some("mint")).validate().is_err());
     }
 
     #[test]

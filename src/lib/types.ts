@@ -81,6 +81,8 @@ export interface Annotation {
   text: string
   color?: string
   note?: string
+  /** A bookmark's name, if the reader gave it one. */
+  name?: string
   chapter?: string
   fraction?: number
   createdAt: number

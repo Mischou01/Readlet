@@ -41,6 +41,7 @@ import {
 } from './foliate'
 import { ReadAloudBar } from './ReadAloudBar'
 import {
+  BookmarkNameDialog,
   DefinitionPopover,
   FootnotePopover,
   HighlightBar,
@@ -130,6 +131,7 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
     text: string
     cfi: string
   } | null>(null)
+  const [namingBookmark, setNamingBookmark] = useState<Annotation | null>(null)
   const [definition, setDefinition] = useState<{ text: string; rect: DOMRect } | null>(null)
   const [footnote, setFootnote] = useState<{ element: HTMLElement; rect: DOMRect } | null>(null)
   const [readingAloud, setReadingAloud] = useState(!!startReadingAloud)
@@ -291,7 +293,15 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
   // -- Chrome visibility ------------------------------------------------------------------------
 
   // The toolbar shows while anything needs it, and otherwise fades 2 s after the last movement.
-  const overlayOpen = !!(sheet || selection || activeHighlight || noteFor || definition || footnote)
+  const overlayOpen = !!(
+    sheet ||
+    selection ||
+    activeHighlight ||
+    noteFor ||
+    namingBookmark ||
+    definition ||
+    footnote
+  )
   const keepChrome = overlayOpen || hoveringChrome || !ready || readingAloud
   const [pokes, setPokes] = useState(0)
   const lastPoke = useRef(0)
@@ -460,25 +470,65 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
     [bookmarks],
   )
 
+  const putBookmark = (
+    b: Pick<Annotation, 'id' | 'cfi' | 'text' | 'name' | 'chapter' | 'fraction'>,
+  ) =>
+    apply(
+      api.putAnnotation(fingerprint, {
+        id: b.id,
+        kind: 'bookmark',
+        cfi: b.cfi,
+        text: b.text,
+        name: b.name || undefined,
+        chapter: b.chapter,
+        fraction: b.fraction,
+      }),
+    )
+
+  /** Removes bookmarks; a named one can be brought back, since its name was typed in. */
+  const removeBookmarks = async (list: Annotation[]) => {
+    for (const b of list) await apply(api.deleteAnnotation(fingerprint, b.id))
+    const named = list.filter((b) => b.name)
+    if (!named.length) return
+    useToasts.getState().show({
+      message: named.length === 1 ? `Removed “${named[0]?.name}”` : 'Bookmarks removed',
+      action: {
+        label: 'Undo',
+        run: () => void Promise.all(list.map((b) => putBookmark(b))),
+      },
+    })
+  }
+
   const [bookmarksAdded, setBookmarksAdded] = useState(0)
   const toggleBookmark = async () => {
     if (pageBookmarks.length) {
-      for (const b of pageBookmarks) await apply(api.deleteAnnotation(fingerprint, b.id))
+      await removeBookmarks(pageBookmarks)
       return
     }
     if (!location?.cfi) return
+    const id = newId()
     const text = (location.range?.toString() ?? '').replace(/\s+/g, ' ').trim().slice(0, 160)
-    const added = await apply(
-      api.putAnnotation(fingerprint, {
-        id: newId(),
-        kind: 'bookmark',
-        cfi: collapseCFI(location.cfi),
-        text,
-        chapter: chapterLabel(tocRef.current, location.tocItem),
-        fraction: location.fraction,
-      }),
-    )
-    if (added) setBookmarksAdded((n) => n + 1)
+    const added = await putBookmark({
+      id,
+      cfi: collapseCFI(location.cfi),
+      text,
+      chapter: chapterLabel(tocRef.current, location.tocItem),
+      fraction: location.fraction,
+    })
+    if (!added) return
+    setBookmarksAdded((n) => n + 1)
+    useToasts.getState().show({
+      message: 'Bookmark added',
+      action: {
+        label: 'Name it',
+        run: () => {
+          const current = useLibrary
+            .getState()
+            .records[fingerprint]?.annotations.find((a) => a.id === id && !a.deleted)
+          if (current) setNamingBookmark(current)
+        },
+      },
+    })
   }
 
   // -- Read-aloud -------------------------------------------------------------------------------
@@ -501,11 +551,12 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
   // -- Input ------------------------------------------------------------------------------------
 
   const closeOverlays = useCallback((): boolean => {
-    if (definition || footnote || activeHighlight || noteFor) {
+    if (definition || footnote || activeHighlight || noteFor || namingBookmark) {
       setDefinition(null)
       setFootnote(null)
       setActiveHighlight(null)
       setNoteFor(null)
+      setNamingBookmark(null)
       return true
     }
     if (selection) {
@@ -518,7 +569,7 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
       return true
     }
     return false
-  }, [definition, footnote, activeHighlight, noteFor, selection, sheet])
+  }, [definition, footnote, activeHighlight, noteFor, namingBookmark, selection, sheet])
 
   const onKey = useLatest((e: KeyboardEvent) => {
     const h = handle.current
@@ -772,7 +823,8 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
             bookmarkedTocIds={bookmarkedTocIds}
             highlights={highlights}
             onGoTo={goTo}
-            onDeleteBookmark={(b) => void apply(api.deleteAnnotation(fingerprint, b.id))}
+            onRenameBookmark={setNamingBookmark}
+            onDeleteBookmark={(b) => void removeBookmarks([b])}
             onClose={() => setSheet(null)}
           />
         )}
@@ -848,6 +900,19 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
             setNoteFor(null)
             if (target.annotation) void updateHighlight(target.annotation, { note })
             else if (selection) void addHighlight(selection, 'butter', note || undefined)
+          }}
+        />
+      )}
+
+      {namingBookmark && (
+        <BookmarkNameDialog
+          passage={namingBookmark.text}
+          initial={namingBookmark.name ?? ''}
+          onClose={() => setNamingBookmark(null)}
+          onSave={(name) => {
+            const target = namingBookmark
+            setNamingBookmark(null)
+            if (name !== (target.name ?? '')) void putBookmark({ ...target, name })
           }}
         />
       )}

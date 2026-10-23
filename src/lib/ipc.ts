@@ -24,6 +24,8 @@ export interface AnnotationInput {
   text: string
   color?: string
   note?: string
+  /** Bookmarks only. */
+  name?: string
   chapter?: string
   fraction?: number
 }
