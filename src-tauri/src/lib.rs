@@ -23,7 +23,9 @@ use state::{AppPaths, AppState};
 pub fn run() {
     let builder = tauri::Builder::default();
     #[cfg(target_os = "android")]
-    let builder = builder.plugin(tauri_plugin_readlet_android::init());
+    let builder = builder
+        .plugin(tauri_plugin_readlet_android::folders())
+        .plugin(tauri_plugin_readlet_android::screen());
     builder
         .plugin(
             tauri_plugin_log::Builder::new()

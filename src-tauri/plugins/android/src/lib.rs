@@ -18,10 +18,23 @@ const PACKAGE: &str = "io.github.mischou01.readlet.android";
 struct Folders<R: Runtime>(PluginHandle<R>);
 struct Screen<R: Runtime>(PluginHandle<R>);
 
-pub fn init<R: Runtime>() -> TauriPlugin<R> {
-    Builder::new("readlet-android")
+// Tauri keeps one Android class per plugin name (registering a second replaces the first), so
+// each class gets a plugin of its own.
+
+/// The folder picker.
+pub fn folders<R: Runtime>() -> TauriPlugin<R> {
+    Builder::new("readlet-folders")
         .setup(|app, api| {
             app.manage(Folders(api.register_android_plugin(PACKAGE, "FoldersPlugin")?));
+            Ok(())
+        })
+        .build()
+}
+
+/// Full screen, the insets and the text menu.
+pub fn screen<R: Runtime>() -> TauriPlugin<R> {
+    Builder::new("readlet-screen")
+        .setup(|app, api| {
             app.manage(Screen(api.register_android_plugin(PACKAGE, "ScreenPlugin")?));
             Ok(())
         })
