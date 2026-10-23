@@ -179,8 +179,8 @@ pub async fn set_book_metadata(
     .await
 }
 
-/// Receives a cover as the raw request body (an empty body means the book has no cover) with
-/// the book's fingerprint in the `x-fingerprint` header.
+/// Receives a cover as the request body (an empty body means the book has no cover) with the
+/// book's fingerprint in the `x-fingerprint` header.
 #[tauri::command]
 pub async fn set_book_cover(app: AppHandle, request: Request<'_>) -> Result<BookEntry> {
     let fingerprint = request
@@ -190,10 +190,7 @@ pub async fn set_book_cover(app: AppHandle, request: Request<'_>) -> Result<Book
         .map(str::to_owned)
         .ok_or_else(|| Error::invalid("missing book id"))?;
     check_fingerprint(&fingerprint)?;
-    let bytes = match request.body() {
-        InvokeBody::Raw(bytes) => bytes.clone(),
-        InvokeBody::Json(_) => return Err(Error::invalid("expected the cover as raw bytes")),
-    };
+    let bytes = body_bytes(request.body())?;
     if bytes.len() > covers::MAX_COVER_BYTES {
         return Err(Error::invalid("the cover is too large"));
     }
@@ -220,6 +217,18 @@ pub async fn set_book_cover(app: AppHandle, request: Request<'_>) -> Result<Book
         book_entry(state, &fingerprint)
     })
     .await
+}
+
+/// A request body sent as bytes. Desktop webviews deliver them raw; Android has no way to read a
+/// request body, so Tauri sends the call through `postMessage` there and the bytes arrive as a
+/// JSON array of numbers.
+fn body_bytes(body: &InvokeBody) -> Result<Vec<u8>> {
+    match body {
+        InvokeBody::Raw(bytes) => Ok(bytes.clone()),
+        InvokeBody::Json(json) => {
+            Vec::<u8>::deserialize(json).map_err(|_| Error::invalid("expected the cover as bytes"))
+        }
+    }
 }
 
 #[tauri::command]
@@ -649,6 +658,16 @@ mod tests {
             chapter: None,
             fraction: Some(0.5),
         }
+    }
+
+    #[test]
+    fn reads_bytes_sent_raw_or_as_json() {
+        let raw = InvokeBody::Raw(vec![1, 2, 255]);
+        assert_eq!(body_bytes(&raw).unwrap(), vec![1, 2, 255]);
+        let json = InvokeBody::Json(serde_json::json!([1, 2, 255]));
+        assert_eq!(body_bytes(&json).unwrap(), vec![1, 2, 255]);
+        assert!(body_bytes(&InvokeBody::Json(serde_json::json!([256]))).is_err());
+        assert!(body_bytes(&InvokeBody::Json(serde_json::json!({ "a": 1 }))).is_err());
     }
 
     #[test]
