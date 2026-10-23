@@ -1,4 +1,3 @@
-import { open } from '@tauri-apps/plugin-dialog'
 import { BookOpen, Copy, Download, PencilLine, Search, SlidersVertical } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { AppHeader } from '../components/AppHeader'
@@ -9,6 +8,7 @@ import { copyText } from '../lib/clipboard'
 import { formatAuthors, formatDay, pluralize } from '../lib/format'
 import { HIGHLIGHTS, markerBackground } from '../lib/highlightColors'
 import { api, toAppError } from '../lib/ipc'
+import { chooseFolder } from '../lib/platform'
 import { HIGHLIGHT_COLORS, type Annotation, type HighlightColor } from '../lib/types'
 import { openBook } from '../library/actions'
 import type { LibraryBook } from '../library/model'
@@ -56,8 +56,14 @@ export function HighlightsView({ initialBook }: { initialBook?: string }) {
   const exportMarkdown = async () => {
     const scope = selected ? [selected] : withHighlights
     if (scope.length === 0) return
-    const dir = await open({ directory: true, title: 'Export highlights to a folder' })
-    if (typeof dir !== 'string') return
+    let dir: string | null
+    try {
+      dir = await chooseFolder('Export highlights to a folder')
+    } catch (e) {
+      showError(`Couldn’t choose a folder: ${toAppError(e).message}`)
+      return
+    }
+    if (dir === null) return
     setExporting(true)
     try {
       const written = await api.exportMarkdown(dir, exportFiles(scope, Date.now()))

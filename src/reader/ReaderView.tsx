@@ -279,15 +279,24 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
     [fingerprint, saveProgressSoon, session, paceRelocated, recordRef],
   )
 
-  // Flush progress and the session when leaving the book or closing the window.
+  // Flush progress and the session when leaving the book or closing the window. Progress is also
+  // saved whenever Readlet goes to the background: Android closes apps without asking, so the
+  // close request never comes there.
   useEffect(() => {
     const unlisten = getCurrentWindow().onCloseRequested(async () => {
       saveProgressSoon.cancel()
       await Promise.all([saveProgress(), session.finish()])
     })
+    const onHidden = () => {
+      if (document.visibilityState !== 'hidden') return
+      saveProgressSoon.cancel()
+      void saveProgress()
+    }
+    document.addEventListener('visibilitychange', onHidden)
     return () => {
       saveProgressSoon.cancel()
       void saveProgress()
+      document.removeEventListener('visibilitychange', onHidden)
       void unlisten.then((fn) => fn())
     }
   }, [saveProgress, saveProgressSoon, session])

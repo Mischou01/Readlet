@@ -1,0 +1,16 @@
+[package]
+name = "tauri-plugin-folders"
+version = "0.1.0"
+description = "Android only: choosing a folder as a filesystem path, with the storage access that needs"
+license = "GPL-3.0-or-later"
+edition = "2024"
+rust-version = "1.88"
+publish = false
+links = "tauri-plugin-folders"
+
+[dependencies]
+tauri = "2.12"
+serde = { version = "1", features = ["derive"] }
+
+[build-dependencies]
+tauri-plugin = { version = "2.7", features = ["build"] }

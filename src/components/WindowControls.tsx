@@ -1,6 +1,7 @@
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { Copy, Minimize2, Minus, Square, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { useIsMobile } from '../lib/platform'
 import { toggleFullscreen } from '../lib/window'
 import { IconButton } from './Button'
 import controls from './controls.module.css'
@@ -38,6 +39,11 @@ const run = (action: () => Promise<void>) => () =>
  * close-requested handlers first.
  */
 export function WindowControls() {
+  // Phones and tablets have no window to minimise, maximise or close.
+  return useIsMobile() ? null : <DesktopWindowControls />
+}
+
+function DesktopWindowControls() {
   const state = useWindowState()
   const window = getCurrentWindow()
   return (

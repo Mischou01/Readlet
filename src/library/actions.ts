@@ -3,6 +3,7 @@
 import { open } from '@tauri-apps/plugin-dialog'
 import { api, toAppError } from '../lib/ipc'
 import { pluralize } from '../lib/format'
+import { chooseFolder } from '../lib/platform'
 import { useApp, type OpeningCover } from '../state/app'
 import { expectAddedFiles, useLibrary } from '../state/library'
 import { showError, useToasts } from '../state/toasts'
@@ -39,19 +40,25 @@ export async function addBookFiles(paths: string[]) {
 }
 
 export async function pickAndAddBooks() {
-  const selected = await open({
-    multiple: true,
-    title: 'Add books',
-    filters: [{ name: 'Books', extensions: BOOK_EXTENSIONS }],
-  })
+  let selected: string | string[] | null
+  try {
+    selected = await open({
+      multiple: true,
+      title: 'Add books',
+      filters: [{ name: 'Books', extensions: BOOK_EXTENSIONS }],
+    })
+  } catch (e) {
+    showError(`Couldn’t choose books: ${toAppError(e).message}`)
+    return
+  }
   if (selected) await addBookFiles(Array.isArray(selected) ? selected : [selected])
 }
 
 /** Asks for a library folder and switches to it. Returns false if the reader cancelled. */
 export async function pickLibraryFolder(): Promise<boolean> {
-  const dir = await open({ directory: true, title: 'Choose your books folder' })
-  if (typeof dir !== 'string') return false
   try {
+    const dir = await chooseFolder('Choose your books folder')
+    if (dir === null) return false
     resetIndexer()
     useLibrary.getState().reset()
     const info = await api.chooseLibrary(dir)

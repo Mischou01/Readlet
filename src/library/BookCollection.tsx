@@ -9,6 +9,7 @@ import { Menu, MenuButton, type MenuAnchor, type MenuEntry } from '../components
 import { ProgressBar } from '../components/Progress'
 import { formatAuthors, formatDay, formatPercent, pluralize } from '../lib/format'
 import { newId } from '../lib/ids'
+import { isMobile } from '../lib/platform'
 import type { ReadingStatus, Shelf } from '../lib/types'
 import { useApp } from '../state/app'
 import { useVisibleShelves } from '../state/library'
@@ -467,7 +468,16 @@ function bookMenuItems(
           },
         ]
       : []),
-    { id: 'reveal', label: 'Show in folder', onSelect: () => void revealBook(book.fingerprint) },
+    // Android has no standard way to show a file in a file manager.
+    ...(isMobile()
+      ? []
+      : [
+          {
+            id: 'reveal',
+            label: 'Show in folder',
+            onSelect: () => void revealBook(book.fingerprint),
+          },
+        ]),
     { id: 'select', label: 'Select', onSelect: actions.select },
     { separator: true, id: 's1' },
     { heading: 'Mark as', id: 'h-status' },

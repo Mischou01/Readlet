@@ -95,6 +95,26 @@ pub async fn set_preferences(state: State<'_, AppState>, preferences: Value) -> 
 
 // -- Library -----------------------------------------------------------------------------------
 
+/// Asks for a folder with Android's own picker, since the dialog plugin can't pick folders there.
+/// `None` if the reader cancelled.
+#[tauri::command]
+pub async fn pick_folder(app: AppHandle) -> Result<Option<String>> {
+    #[cfg(target_os = "android")]
+    {
+        tauri::async_runtime::spawn_blocking(move || tauri_plugin_folders::pick_folder(&app))
+            .await
+            .map_err(|e| Error::invalid(format!("background task failed: {e}")))?
+            .map_err(Error::invalid)
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = app;
+        Err(Error::invalid(
+            "picking a folder this way is only needed on Android",
+        ))
+    }
+}
+
 #[tauri::command]
 pub async fn choose_library(app: AppHandle, path: String) -> Result<AppInfo> {
     blocking(&app.clone(), move |state| {

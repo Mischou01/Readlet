@@ -47,6 +47,8 @@ export const api = {
   getAppInfo: () => invoke<AppInfo>('get_app_info'),
   setPreferences: (preferences: object) => invoke<void>('set_preferences', { preferences }),
 
+  /** Android only: its own folder picker. Null if the reader cancelled. */
+  pickFolder: () => invoke<string | null>('pick_folder'),
   chooseLibrary: (path: string) => invoke<AppInfo>('choose_library', { path }),
   rescanLibrary: () => invoke<void>('rescan_library'),
   listBooks: () => invoke<BookEntry[]>('list_books'),

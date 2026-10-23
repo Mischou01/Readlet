@@ -21,7 +21,10 @@ use state::{AppPaths, AppState};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(target_os = "android")]
+    let builder = builder.plugin(tauri_plugin_folders::init());
+    builder
         .plugin(
             tauri_plugin_log::Builder::new()
                 .targets([
@@ -52,6 +55,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::get_app_info,
             commands::set_preferences,
+            commands::pick_folder,
             commands::choose_library,
             commands::rescan_library,
             commands::list_books,
