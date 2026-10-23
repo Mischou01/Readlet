@@ -23,7 +23,6 @@ highlights and reading stats in that folder. Built with Tauri 2, React and
   and yearly goals.
 - **Read-aloud** through Speech Dispatcher, from any point or for a selected passage only, with
   speed, voice and a sleep timer.
-- Interface colours are taken from the open book's cover.
 
 Formats: EPUB, MOBI, AZW3, FB2 and CBZ; PDF support is experimental. DRM-protected books can't be
 opened.
@@ -52,7 +51,6 @@ folder can therefore be synced with Syncthing, Nextcloud or similar without conf
 identified by a fingerprint of their contents, so a renamed or moved file keeps its data. The
 SQLite index in the app's data directory is a cache, rebuilt from the folder.
 
-There are no accounts and no telemetry.
 
 ## Install
 
