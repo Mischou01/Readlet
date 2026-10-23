@@ -1,10 +1,20 @@
 # Checks every push and pull request: types, lint, formatting and tests for the UI and the Rust
-# core. Pushes to main also build the Linux packages and publish them as a pre-release.
+# core, for the desktop and for Android. Pushes to main and version tags also build the packages:
+# a .deb, an .rpm and an AppImage for Linux, and an APK for Android (arm64).
+#
+# - Pushes to main replace the rolling "main-build" pre-release.
+# - A tag like v0.2.0 publishes a release of that version. The tag must match the version in
+#   src-tauri/tauri.conf.json.
+#
+# Packages go to GitHub Releases rather than staying as workflow artifacts: release files don't
+# count against the account's Actions storage. The APK is only published when it's signed (the
+# ANDROID_KEYSTORE and ANDROID_KEYSTORE_PASSWORD secrets; see README, "Signing the APK").
 name: CI
 
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
 
 permissions:
@@ -16,6 +26,7 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  BUN_VERSION: 1.4.2
 
 jobs:
   check:
@@ -33,7 +44,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.2
+          bun-version: ${{ env.BUN_VERSION }}
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -60,12 +71,45 @@ jobs:
       - name: Rust tests
         run: cargo test --manifest-path src-tauri/Cargo.toml
 
-  bundle:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: check
+  # The Android-only Rust code (src-tauri/src/android, tts/android.rs, …) isn't compiled on the
+  # desktop, so lint it for Android too. Uses the NDK that comes with GitHub's Ubuntu runners.
+  check-android:
     runs-on: ubuntu-24.04
-    permissions:
-      contents: write
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+          targets: aarch64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: android
+
+      # The core embeds the built UI, so it has to exist before Rust compiles.
+      - run: bun install --frozen-lockfile && bun run build
+
+      - name: Clippy (Android)
+        run: |
+          toolchain="$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          export CC_aarch64_linux_android="$toolchain/aarch64-linux-android30-clang"
+          export AR_aarch64_linux_android="$toolchain/llvm-ar"
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$CC_aarch64_linux_android"
+          cargo clippy --manifest-path src-tauri/Cargo.toml --target aarch64-linux-android --lib -- -D warnings
+
+  bundle-linux:
+    if: github.event_name == 'push'
+    needs: [check, check-android]
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
@@ -79,7 +123,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.2
+          bun-version: ${{ env.BUN_VERSION }}
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -90,19 +134,126 @@ jobs:
       - run: bun install --frozen-lockfile
 
       - name: Build packages
-        run: bun run tauri build --bundles deb,rpm
+        run: bun run tauri build --bundles deb,rpm,appimage
 
-      # A rolling pre-release rather than workflow artifacts: release files don't count against the
-      # account's Actions storage quota.
-      - name: Publish the packages as the "main-build" pre-release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          retention-days: 1
+          if-no-files-found: error
+          path: |
+            src-tauri/target/release/bundle/deb/*.deb
+            src-tauri/target/release/bundle/rpm/*.rpm
+            src-tauri/target/release/bundle/appimage/*.AppImage
+
+  bundle-android:
+    if: github.event_name == 'push'
+    needs: [check, check-android]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    outputs:
+      signed: ${{ steps.signing.outputs.signed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: android-release
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+          cache-dependency-path: src-tauri/gen/android/**/*.gradle*
+
+      - run: bun install --frozen-lockfile
+
+      - name: Set up the signing key
+        id: signing
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE" ] || [ -z "$KEYSTORE_PASSWORD" ]; then
+            echo "::warning title=APK not signed::Add the ANDROID_KEYSTORE and ANDROID_KEYSTORE_PASSWORD secrets to publish the APK (README, \"Signing the APK\")."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "$KEYSTORE" | base64 --decode > "$RUNNER_TEMP/readlet.keystore"
+          {
+            echo "storeFile=$RUNNER_TEMP/readlet.keystore"
+            echo "keyAlias=readlet"
+            echo "password=$KEYSTORE_PASSWORD"
+          } > src-tauri/gen/android/keystore.properties
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Build the APK (arm64)
+        run: |
+          export NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          bun run tauri android build --apk --target aarch64
+          version=$(jq -r .version src-tauri/tauri.conf.json)
+          apk=$(find src-tauri/gen/android/app/build/outputs/apk -name '*-release.apk' | head -n 1)
+          if [ -z "$apk" ]; then
+            apk=$(find src-tauri/gen/android/app/build/outputs/apk -name '*-release-unsigned.apk' | head -n 1)
+          fi
+          mkdir -p dist-android
+          cp "$apk" "dist-android/Readlet_${version}_arm64.apk"
+          ls -l dist-android
+
+      - uses: actions/upload-artifact@v4
+        if: steps.signing.outputs.signed == 'true'
+        with:
+          name: android
+          retention-days: 1
+          if-no-files-found: error
+          path: dist-android/*.apk
+
+  publish:
+    needs: [bundle-linux, bundle-android]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: packages
+          merge-multiple: true
+
+      - name: Publish the packages
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view main-build > /dev/null 2>&1; then
-            gh release delete main-build --cleanup-tag --yes
+          ls -l packages
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            version=$(jq -r .version src-tauri/tauri.conf.json)
+            if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+              echo "::error::The tag $GITHUB_REF_NAME doesn't match the app version $version (src-tauri/tauri.conf.json)."
+              exit 1
+            fi
+            gh release create "$GITHUB_REF_NAME" --verify-tag --title "Readlet $version" \
+              --generate-notes packages/*
+          else
+            # A rolling pre-release, replaced on every push to main.
+            if gh release view main-build > /dev/null 2>&1; then
+              gh release delete main-build --cleanup-tag --yes
+            fi
+            gh release create main-build --prerelease --target "$GITHUB_SHA" \
+              --title "Latest build from main" \
+              --notes "Built from $GITHUB_SHA. Replaced on every push to main." \
+              packages/*
           fi
-          gh release create main-build --prerelease --target "$GITHUB_SHA" \
-            --title "Latest build from main" \
-            --notes "Built from $GITHUB_SHA. Replaced on every push to main." \
-            src-tauri/target/release/bundle/deb/*.deb \
-            src-tauri/target/release/bundle/rpm/*.rpm
