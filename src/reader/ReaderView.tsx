@@ -299,12 +299,13 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
 
   // A phone may stop the app once it's in the background: save the position and the session so
   // far now. (The session carries on if the reader comes back.)
+  const checkpointSession = session.checkpoint
   useOnHide(
     useCallback(() => {
       saveProgressSoon.cancel()
       void saveProgress()
-      session.checkpoint()
-    }, [saveProgress, saveProgressSoon, session]),
+      checkpointSession()
+    }, [saveProgress, saveProgressSoon, checkpointSession]),
   )
 
   // -- Chrome visibility ------------------------------------------------------------------------
