@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { TtsEvent } from '../lib/ipc'
+import type { RemoteAction, TtsEvent } from '../lib/ipc'
 import type { BookViewHandle } from './BookView'
 import { useReadAloud } from './useReadAloud'
 
@@ -10,6 +10,7 @@ const tts = vi.hoisted(() => ({
   spoken: [] as string[],
   next: 1,
   emit: null as ((event: TtsEvent) => void) | null,
+  remote: null as ((action: RemoteAction) => void) | null,
 }))
 
 vi.mock('../lib/ipc', async (importOriginal) => {
@@ -24,11 +25,16 @@ vi.mock('../lib/ipc', async (importOriginal) => {
       }),
       ttsStop: vi.fn(async () => {}),
       ttsVoices: vi.fn(async () => []),
+      ttsSession: vi.fn(async () => {}),
     },
     events: {
       ...actual.events,
       onTts: vi.fn(async (handler: (event: TtsEvent) => void) => {
         tts.emit = handler
+        return () => {}
+      }),
+      onTtsRemote: vi.fn(async (handler: (action: RemoteAction) => void) => {
+        tts.remote = handler
         return () => {}
       }),
     },
@@ -42,6 +48,7 @@ beforeEach(() => {
   tts.spoken = []
   tts.next = 1
   vi.mocked(api.ttsStop).mockClear()
+  vi.mocked(api.ttsSession).mockClear()
 })
 
 function setUp() {
@@ -73,6 +80,7 @@ function setUp() {
 const settle = () => act(async () => {})
 
 const send = (event: TtsEvent) => act(() => tts.emit?.(event))
+const press = (action: RemoteAction) => act(() => tts.remote?.(action))
 
 describe('reading a selected passage aloud', () => {
   it('says only the passage, highlights each sentence and stops at its end', async () => {
@@ -152,5 +160,50 @@ describe('pausing', () => {
     expect(api.ttsStop).toHaveBeenCalledTimes(2)
     send({ kind: 'end', message: 1 })
     expect(onEnded).not.toHaveBeenCalled()
+  })
+})
+
+describe('media controls outside the app', () => {
+  it('shows what is being read, and answers the lock screen and headset buttons', async () => {
+    const { hook, range, onEnded } = setUp()
+    await settle()
+    act(() => hook.result.current.readPassage(range))
+    await settle()
+    expect(api.ttsSession).toHaveBeenLastCalledWith({
+      title: 'Walden',
+      chapter: null,
+      fingerprint: 'f'.repeat(32),
+      playing: true,
+    })
+    send({ kind: 'mark', message: 1, mark: '1' })
+
+    press('pause')
+    await settle()
+    expect(hook.result.current.status).toBe('paused')
+    expect(vi.mocked(api.ttsSession).mock.lastCall?.[0]).toMatchObject({ playing: false })
+
+    press('play')
+    await settle()
+    expect(hook.result.current.status).toBe('playing')
+    expect(tts.spoken.at(-1)).toContain('Two fish.')
+
+    press('stop')
+    await settle()
+    expect(onEnded).toHaveBeenCalledTimes(1)
+    expect(api.ttsSession).toHaveBeenLastCalledWith(null)
+  })
+})
+
+describe('engine errors', () => {
+  it('stop reading and say why', async () => {
+    const { hook, range } = setUp()
+    await settle()
+    act(() => hook.result.current.readPassage(range))
+    await settle()
+    send({ kind: 'error', message: 1, error: 'This voice needs an internet connection.' })
+    await settle()
+    expect(hook.result.current.status).toBe('error')
+    expect(hook.result.current.error).toBe('This voice needs an internet connection.')
+    expect(api.ttsStop).toHaveBeenCalled()
   })
 })
