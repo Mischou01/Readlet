@@ -83,6 +83,30 @@ describe('sortBooks', () => {
       'e',
     ])
   })
+
+  it('puts finished books last when sorting by recent reading, most recent first', () => {
+    const done = (fingerprint: string, at: number) =>
+      book(
+        { fingerprint, title: fingerprint },
+        { progress: progress(1, at), status: { value: 'finished', updatedAt: at } },
+      )
+    const books = [done('old', 10), emma, done('new', 900), waves, dune]
+    expect(sortBooks(books, 'recent').map((b) => b.fingerprint)).toEqual([
+      'd',
+      'w',
+      'e',
+      'new',
+      'old',
+    ])
+    // Other sorts are the reader's explicit choice and stay as they are.
+    expect(sortBooks(books, 'title').map((b) => b.fingerprint)).toEqual([
+      'd',
+      'e',
+      'new',
+      'old',
+      'w',
+    ])
+  })
 })
 
 describe('filterBooks', () => {

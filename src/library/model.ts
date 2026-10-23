@@ -66,12 +66,17 @@ const bySeries = (a: LibraryBook, b: LibraryBook) =>
   (a.entry.series ?? '').localeCompare(b.entry.series ?? '') ||
   (a.entry.seriesIndex ?? 0) - (b.entry.seriesIndex ?? 0)
 
+/** Finished books sink below the rest when sorting by recent reading: they're done with. */
+const finishedLast = (a: LibraryBook, b: LibraryBook) =>
+  Number(a.status === 'finished') - Number(b.status === 'finished')
+
 export function sortBooks(books: LibraryBook[], sort: LibrarySort): LibraryBook[] {
   const sorted = [...books]
   switch (sort) {
     case 'recent':
       return sorted.sort(
         (a, b) =>
+          finishedLast(a, b) ||
           Math.max(b.lastReadAt, b.statusAt) - Math.max(a.lastReadAt, a.statusAt) ||
           b.entry.addedAt - a.entry.addedAt ||
           byTitle(a, b),
