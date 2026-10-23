@@ -10,6 +10,7 @@ import android.provider.OpenableColumns
 import android.provider.Settings
 import android.webkit.WebView
 import androidx.activity.result.ActivityResult
+import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -102,7 +103,7 @@ class ReadletPlugin(private val activity: Activity) : Plugin(activity) {
     }
   }
 
-  override fun onDestroy() {
+  override fun onDestroy(activity: AppCompatActivity) {
     PlaybackService.onRemoteAction = null
     PlaybackService.stop(activity)
     speech.shutdown()
@@ -143,23 +144,28 @@ class ReadletPlugin(private val activity: Activity) : Plugin(activity) {
   @Command
   fun setPlaybackSession(invoke: Invoke) {
     val args = invoke.parseArgs(SessionArgs::class.java)
-    try {
-      PlaybackService.update(
-        activity,
-        PlaybackService.Session(args.title, args.chapter, args.coverPath, args.playing),
-      )
-      invoke.resolve()
-    } catch (e: Exception) {
-      // Android refuses to start a foreground service from the background (Android 12+);
-      // speaking still works, only without the lock-screen controls.
-      invoke.reject("Couldn't show the read-aloud controls: ${e.message}")
+    // The service and its media session live on the main thread.
+    activity.runOnUiThread {
+      try {
+        PlaybackService.update(
+          activity,
+          PlaybackService.Session(args.title, args.chapter, args.coverPath, args.playing),
+        )
+        invoke.resolve()
+      } catch (e: Exception) {
+        // Android refuses to start a foreground service from the background (Android 12+);
+        // speaking still works, only without the lock-screen controls.
+        invoke.reject("Couldn't show the read-aloud controls: ${e.message}")
+      }
     }
   }
 
   @Command
   fun endPlaybackSession(invoke: Invoke) {
-    PlaybackService.stop(activity)
-    invoke.resolve()
+    activity.runOnUiThread {
+      PlaybackService.stop(activity)
+      invoke.resolve()
+    }
   }
 
   // -- Files ------------------------------------------------------------------------------------

@@ -53,7 +53,8 @@ export function ReadAloudBar({ readAloud, entry, title, chapter, minutesLeft }: 
     },
     ...(matching.length ? matching : voices).slice(0, 40).map((v) => ({
       id: v.name,
-      label: v.language ? `${v.name} (${v.language})` : v.name,
+      // Android's network voices send the text to the engine's servers.
+      label: `${v.language ? `${v.name} (${v.language})` : v.name}${v.variant === 'network' ? ', online' : ''}`,
       checked: v.name === voice,
       onSelect: () => readAloud.setVoice(v.name),
     })),
