@@ -2,7 +2,6 @@ import { FolderOpen, Highlighter, Play, Trash2 } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
 import { Button } from '../components/Button'
 import { Cover } from '../components/Cover'
-import { Segmented } from '../components/Fields'
 import { ProgressBar } from '../components/Progress'
 import { Sheet } from '../components/Sheet'
 import {
@@ -25,7 +24,6 @@ import { usePreferences } from '../state/preferences'
 import { openBook, revealBook } from './actions'
 import styles from './details.module.css'
 import { seriesAnchor } from './model'
-import { setStatusOf } from './shelves'
 
 /** Shows the library sorted by series, scrolled to this one. */
 function showSeries(series: string) {
@@ -38,11 +36,13 @@ function showSeries(series: string) {
   )
 }
 
-const STATUSES: { value: ReadingStatus; label: string }[] = [
-  { value: 'toRead', label: 'To read' },
-  { value: 'reading', label: 'Reading' },
-  { value: 'finished', label: 'Finished' },
-]
+/** Shown as a line rather than a control: changing it from here reshuffled the library behind
+ * the sheet, and it looked like the library's tabs. The book's menu has "Mark as". */
+const STATUS_LABELS: Record<ReadingStatus, string> = {
+  toRead: 'To read',
+  reading: 'Reading',
+  finished: 'Finished',
+}
 
 /** Descriptions longer than this many characters are folded until "More" is pressed. */
 const FOLDED_LENGTH = 420
@@ -138,13 +138,11 @@ export function BookDetailsSheet({ fingerprint }: { fingerprint: string }) {
       )}
 
       <section className={styles.section} aria-label="Reading">
-        <Segmented
-          label="Reading status"
-          value={book.status}
-          options={STATUSES}
-          onChange={(status) => void setStatusOf([book.fingerprint], status)}
-        />
-        {started && (
+        <p className={styles.status}>
+          {STATUS_LABELS[book.status]}
+          {book.status === 'finished' && book.statusAt ? ` · ${formatDay(book.statusAt)}` : ''}
+        </p>
+        {started && book.status !== 'finished' && (
           <div className={styles.progress}>
             <ProgressBar
               value={book.fraction}

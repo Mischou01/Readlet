@@ -57,7 +57,9 @@ export function Sheet({
       role="dialog"
       aria-labelledby={titleId}
       className={`${styles.sheet} ${className ?? ''}`}
-      style={style}
+      // A side sheet's offset from the top (`style.top`) doesn't apply to a bottom sheet: it
+      // would hold the sheet up off the bottom edge, with the view showing through below it.
+      style={phone && style?.top !== undefined ? { ...style, top: undefined } : style}
       // Slides in from the edge without fading: frosted glass that fades pops when the fade ends.
       initial={phone ? { y: '110%' } : { x: '110%' }}
       animate={phone ? { y: 0 } : { x: 0 }}

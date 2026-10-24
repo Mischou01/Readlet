@@ -1,0 +1,33 @@
+# Removes the "test-build" pre-release (and its tag) once the pull request it was built from is
+# merged or closed (ci.yml, publish-test-apk), so the Releases page only shows main's build and a
+# test build that's still being tried. The test APK installs over main-build, so an old one left
+# there is easy to install by mistake.
+name: Test build cleanup
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+
+jobs:
+  remove-test-build:
+    # Pull requests from forks never publish a test build (and get a read-only token).
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Remove "test-build" if it came from this pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          title=$(gh release view test-build --json name --jq .name 2>/dev/null || true)
+          if [ "$title" = "Test build: pull request #$PR" ]; then
+            gh release delete test-build --cleanup-tag --yes
+            echo "Removed the test build of #$PR."
+          else
+            echo "The test build is from elsewhere (${title:-none}); nothing to remove for #$PR."
+          fi

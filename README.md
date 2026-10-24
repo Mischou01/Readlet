@@ -70,6 +70,10 @@ CI builds a `.deb`, an `.rpm`, an AppImage and an Android APK (arm64) on every p
 and publishes them as the `main-build` pre-release on the Releases page. Tagging a commit
 `v<version>` publishes a release of that version.
 
+While a pull request is open, its latest Android build is the `test-build` pre-release, for trying
+the change on a phone; it's removed when the pull request is merged or closed. It installs over
+`main-build`, so install `main-build` again afterwards.
+
 ### Linux
 
 Read-aloud needs Speech Dispatcher and a voice. On Fedora:

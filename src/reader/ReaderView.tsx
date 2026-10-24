@@ -391,7 +391,8 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
     if (e.clientX === lastPointer.current.x && e.clientY === lastPointer.current.y) return
     lastPointer.current = { x: e.clientX, y: e.clientY }
     onActivity()
-    showChrome()
+    // Fingers move to swipe and scroll; a tap shows the toolbar instead.
+    if (e.pointerType !== 'touch') showChrome()
   }
 
   // -- Annotations ------------------------------------------------------------------------------

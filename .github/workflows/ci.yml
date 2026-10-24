@@ -3,6 +3,10 @@
 # a .deb, an .rpm and an AppImage for Linux, and an APK for Android (arm64).
 #
 # - Pushes to main replace the rolling "main-build" pre-release.
+# - Pull requests from branches of this repository build the APK only, into the rolling
+#   "test-build" pre-release, to try a change on a phone before it's merged. (Pull requests from
+#   forks get no secrets, so they can't sign one.) test-build-cleanup.yml removes it when that
+#   pull request is merged or closed.
 # - A tag like v0.2.0 publishes a release of that version. The tag must match the version in
 #   src-tauri/tauri.conf.json.
 #
@@ -147,7 +151,9 @@ jobs:
             src-tauri/target/release/bundle/appimage/*.AppImage
 
   bundle-android:
-    if: github.event_name == 'push'
+    if: >-
+      github.event_name == 'push' ||
+      github.event.pull_request.head.repo.full_name == github.repository
     needs: [check, check-android]
     runs-on: ubuntu-24.04
     timeout-minutes: 45
@@ -221,6 +227,7 @@ jobs:
           path: dist-android/*.apk
 
   publish:
+    if: github.event_name == 'push'
     needs: [bundle-linux, bundle-android]
     runs-on: ubuntu-24.04
     permissions:
@@ -264,3 +271,34 @@ jobs:
               --notes "Built from $GITHUB_SHA. Replaced on every push to main." \
               "${files[@]}"
           fi
+
+  publish-test-apk:
+    needs: bundle-android
+    if: github.event_name == 'pull_request' && needs.bundle-android.outputs.signed == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    timeout-minutes: 15
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: android
+          path: packages
+
+      - name: Publish the APK to "test-build"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          ls -l packages
+          # A rolling pre-release, replaced by the latest push to any pull request.
+          if gh release view test-build > /dev/null 2>&1; then
+            gh release delete test-build --cleanup-tag --yes
+          fi
+          gh release create test-build --prerelease --target "$HEAD_SHA" \
+            --title "Test build: pull request #$PR" \
+            --notes "An Android test build of pull request #$PR ($HEAD_REF at $HEAD_SHA), merged with main. Signed with the same key as main-build, so it installs over it. Replaced by the next push to a pull request." \
+            packages/*.apk

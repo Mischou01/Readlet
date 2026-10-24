@@ -236,6 +236,9 @@
   right: 0;
   bottom: var(--safe-bottom);
   pointer-events: none;
+  transition:
+    transform 320ms var(--ease-out),
+    opacity 320ms var(--ease-out);
 }
 
 .withSheet .footer {
@@ -821,6 +824,12 @@
   /* A taller target for the thumb, which only works while the toolbar shows. */
   .seek input {
     height: 32px;
+  }
+
+  /* A phone has no room to spare: the footer goes with the toolbar, and a tap brings both back. */
+  .footer[data-chrome-hidden] {
+    transform: translateY(100%);
+    opacity: 0;
   }
 
   .footer[data-chrome-hidden] .seek input {
