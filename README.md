@@ -7,31 +7,51 @@ E-reader for Linux and Android. Built with Tauri 2, React and
 
 ## Features
 
-- Library with search, sorting, series, shelves and reading status
+- Library with search, sorting, series, shelves, reading status and book details
 - Formats: EPUB, MOBI, AZW3, FB2, CBZ and PDF (experimental); no DRM support
-- Highlights, notes, bookmarks, Wiktionary lookup, Markdown export
-- Reading stats and goals
-- Read-aloud via Speech Dispatcher (Linux) or the system TTS engine (Android)
+- Paginated or scrolled reader, two-page spreads, table of contents, in-book search, four themes,
+  adjustable fonts and spacing
+- Highlights in five colours, notes, bookmarks, Wiktionary lookup, Markdown export
+- Reading stats: time, streaks, speed and goals
+- Read-aloud via Speech Dispatcher (Linux) or the system TTS engine (Android), with a sleep timer
+- PDF and comic zoom with a view lock
+- Android: keep-awake while reading, volume keys for page turns, lock-screen playback controls
+
+|                                                 |                                                 |
+| ----------------------------------------------- | ----------------------------------------------- |
+| ![Reader](docs/screenshots/reader.webp)         | ![Read-aloud](docs/screenshots/read-aloud.webp) |
+| ![Highlights](docs/screenshots/highlights.webp) | ![Stats](docs/screenshots/stats.webp)           |
 
 ## Data
 
 Readlet reads books from a folder and stores progress, highlights and stats in `.readlet/` inside
 it. Each device writes only to its own subdirectory and all of them are merged on read, so the
-folder can be synced with Syncthing, Nextcloud or similar. Book files are never modified.
+folder can be synced with Syncthing, Nextcloud or similar without conflicts. Book files are never
+modified. Books are identified by a content fingerprint, so renaming or moving a file keeps its
+data. The SQLite index in the app data directory is a cache and can be rebuilt from the folder.
 
 ## Install
 
 Packages (`.deb`, `.rpm`, AppImage, Android APK) are published as the `main-build` pre-release on
 the Releases page.
 
-Read-aloud on Linux needs Speech Dispatcher and a voice (`sudo dnf install speech-dispatcher
-espeak-ng` on Fedora). Android 11 or newer is required; the app asks for _All files access_ to
-read the books folder.
+**Linux:** read-aloud needs Speech Dispatcher and a voice (`sudo dnf install speech-dispatcher
+espeak-ng` on Fedora). The AppImage does not install them.
+
+**Android:** requires Android 11 or newer. The app asks for _All files access_ to read the books
+folder. Read-aloud uses the text-to-speech engine set in the system settings. The library is
+rescanned when the app returns to the foreground.
 
 ## Development
 
 Requires Rust 1.88+, [bun](https://bun.sh) and
-[Tauri's system libraries](https://v2.tauri.app/start/prerequisites/).
+[Tauri's system libraries](https://v2.tauri.app/start/prerequisites/). On Fedora:
+
+```sh
+sudo dnf install webkit2gtk4.1-devel openssl-devel curl wget file libappindicator-gtk3-devel \
+  librsvg2-devel libxdo-devel
+sudo dnf group install c-development
+```
 
 ```sh
 git clone --recurse-submodules https://github.com/Mischou01/Readlet
