@@ -57,6 +57,8 @@ Not yet measured against the milestone criteria:
 3. Piper voices (open question 3), then offline dictionaries.
 4. Windows builds; re-anchoring highlights when a book is replaced by a new edition.
 5. Optional in-app sync over WebDAV (open question 6).
+6. Finding books online and filling in book details: research, recommendations and open
+   decisions are in [ONLINE.md](ONLINE.md).
 
 Known issue: when the reader closes, foliate-js's paginator can run a queued `requestAnimationFrame`
 or `fonts.ready` callback after the view is destroyed. This logs a harmless `doc.documentElement`
