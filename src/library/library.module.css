@@ -485,8 +485,8 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-left: calc(min(560px, 100vw - 32px) / -2);
-  width: min(560px, calc(100vw - 32px));
+  margin-left: calc(min(620px, 100vw - 32px) / -2);
+  width: min(620px, calc(100vw - 32px));
   padding: 6px 6px 6px 22px;
   border-radius: var(--radius-pill);
   border: 1px solid var(--glass-edge);

@@ -17,6 +17,16 @@ import {
 } from './foliate'
 import { touchZoneAt, type TapZone } from './tapZones'
 import { chapterLabel } from './toc'
+import {
+  fitPageScale,
+  MAX_ZOOM,
+  normalizeZoom,
+  parseViewportSize,
+  scrollToKeep,
+  stepZoom,
+  type PageSize,
+  type PageZoom,
+} from './zoom'
 
 export interface SelectionInfo {
   cfi: string
@@ -75,6 +85,15 @@ export interface BookViewHandle {
 }
 
 export type { TapZone } from './tapZones'
+export type { PageZoom } from './zoom'
+
+/** How a page-based book is zoomed, as the reader sees it. */
+export interface ZoomInfo {
+  /** The pages' size as a factor of the fit-page size. */
+  factor: number
+  /** The pages are bigger than the view, so it scrolls. */
+  overflowing: boolean
+}
 
 /** The screen showing within the current section (chapter), when the text is paginated. */
 export interface SectionPages {
@@ -103,6 +122,13 @@ interface BookViewProps {
   onPointerMove(): void
   onTap(zone: TapZone): void
   onKeyDown(event: KeyboardEvent): void
+  /** Page-based books (PDF, comics, fixed layouts): how far the pages are zoomed. */
+  zoom: PageZoom
+  /** While zoomed: no sideways panning, and pinching or Ctrl+wheel leave the zoom alone. */
+  viewLocked: boolean
+  onZoomInfo(info: ZoomInfo): void
+  /** A pinch or Ctrl+wheel asks for this zoom. */
+  onZoomRequest(zoom: PageZoom): void
   ref?: Ref<BookViewHandle>
 }
 
@@ -117,6 +143,14 @@ const EDGE_TAP_FRACTION = 0.22
 const TOUCH_SELECTION_SETTLE_MS = 350
 /** How long a tap on the text waits for a second click before it counts as a tap. */
 const DOUBLE_CLICK_MS = 260
+/** Ctrl+wheel distance for one zoom step, and the pause before the next. */
+const WHEEL_ZOOM_THRESHOLD = 40
+const WHEEL_ZOOM_COOLDOWN_MS = 120
+/** Zoomed in, "next" scrolls this much of the view before it turns the page. */
+const ZOOMED_SCROLL_FRACTION = 0.85
+/** Older engines can't centre content that overflows without cutting off its start. */
+const SAFE_CENTER =
+  typeof CSS !== 'undefined' && CSS.supports?.('justify-content', 'safe center') === true
 
 /**
  * The box the text is laid out in. foliate's paginator puts each page's iframe in a `#container`
@@ -138,11 +172,35 @@ function applyLayout(view: View, layout: BookLayout) {
   r.toggleAttribute('animated', layout.animated)
 }
 
+/**
+ * Where a book page (an iframe) is in the window, and how much it's scaled: fixed-layout pages
+ * other than PDFs are drawn at their own size and shrunk or grown with a CSS transform, so points
+ * inside them are in the page's own pixels.
+ */
+function frameBox(doc: Document): { left: number; top: number; scale: number } | null {
+  const frame = doc.defaultView?.frameElement
+  if (!(frame instanceof HTMLElement)) return null
+  const rect = frame.getBoundingClientRect()
+  const scale = frame.offsetWidth > 0 ? rect.width / frame.offsetWidth : 1
+  return { left: rect.left, top: rect.top, scale: scale || 1 }
+}
+
+/** Translates a point in a book page (an iframe) into window coordinates. */
+function toWindowPoint(x: number, y: number, doc: Document): { x: number; y: number } {
+  const box = frameBox(doc)
+  return box ? { x: box.left + x * box.scale, y: box.top + y * box.scale } : { x, y }
+}
+
 /** Translates a rect from a book page (an iframe) into window coordinates. */
 function toWindowRect(rect: DOMRect, doc: Document): DOMRect {
-  const frame = doc.defaultView?.frameElement?.getBoundingClientRect()
-  return frame
-    ? new DOMRect(rect.left + frame.left, rect.top + frame.top, rect.width, rect.height)
+  const box = frameBox(doc)
+  return box
+    ? new DOMRect(
+        box.left + rect.left * box.scale,
+        box.top + rect.top * box.scale,
+        rect.width * box.scale,
+        rect.height * box.scale,
+      )
     : rect
 }
 
@@ -152,6 +210,120 @@ function sectionPages(view: View): SectionPages | null {
   if (page === undefined || pages === undefined || pages < 3) return null
   const total = pages - 2
   return { current: Math.min(Math.max(page, 1), total), total }
+}
+
+// -- Zoom (page-based books) -------------------------------------------------------------------
+// foliate's fixed-layout renderer (`<foliate-fxl>`) scales its pages by its `zoom` attribute
+// ("fit-page", "fit-width" or a scale) and scrolls itself when they're bigger than the view.
+
+interface PageFrame {
+  frame: HTMLIFrameElement
+  /** The size the page declares; `null` for the empty half of a spread. */
+  size: PageSize | null
+}
+
+function pageSize(doc: Document, frame: HTMLIFrameElement): PageSize | null {
+  const declared = parseViewportSize(
+    doc.querySelector('meta[name="viewport"]')?.getAttribute('content'),
+  )
+  if (declared) return declared
+  const root = doc.documentElement
+  if (root?.localName === 'svg') {
+    const [, , width, height] = (root.getAttribute('viewBox') ?? '').split(/\s+/).map(Number)
+    if (width && height) return { width, height }
+  }
+  // Pages that don't declare a size (comic images) get an unscaled frame of the image's size.
+  const width = parseFloat(frame.style.width)
+  const height = parseFloat(frame.style.height)
+  return width > 0 && height > 0 ? { width, height } : null
+}
+
+/** The pages on screen: one, or both halves of a spread. */
+function visiblePages(view: View): PageFrame[] {
+  const pages: PageFrame[] = []
+  for (const { doc } of view.renderer.getContents()) {
+    const frame = doc?.defaultView?.frameElement
+    if (!(frame instanceof HTMLIFrameElement)) continue
+    // The other half of a spread, on a screen too narrow to show both.
+    if (frame.parentElement?.style.display === 'none') continue
+    const blank = frame.style.display === 'none'
+    pages.push({ frame, size: blank ? null : pageSize(doc, frame) })
+  }
+  return pages
+}
+
+/** The scale at which the pages on screen fit the view. */
+function fitPage(view: View): number | null {
+  const pages = visiblePages(view)
+  const first = pages.find((p) => p.size)?.size
+  if (!first) return null
+  // An empty half of a spread takes the size of the page beside it, as the renderer does.
+  const { width, height } = view.renderer.getBoundingClientRect()
+  return fitPageScale(
+    { width, height },
+    pages.map((p) => p.size ?? first),
+  )
+}
+
+/** The scale the pages are drawn at now. */
+function currentScale(view: View): number | null {
+  const page = visiblePages(view).find((p) => p.size)
+  if (!page?.size) return null
+  return page.frame.getBoundingClientRect().width / page.size.width
+}
+
+function zoomInfo(view: View): ZoomInfo {
+  const r = view.renderer
+  const fit = fitPage(view)
+  const scale = currentScale(view)
+  return {
+    factor: fit && scale ? scale / fit : 1,
+    overflowing: r.scrollHeight > r.clientHeight + 1 || r.scrollWidth > r.clientWidth + 1,
+  }
+}
+
+/**
+ * Zooms the pages. `focus` (a point in the view) stays where it is, as under a pinch. Returns
+ * whether anything changed.
+ */
+function applyZoom(view: View, zoom: PageZoom, focus?: { x: number; y: number }): boolean {
+  if (!view.isFixedLayout) return false
+  const r = view.renderer
+  let value: string
+  if (typeof zoom === 'number') {
+    const fit = fitPage(view)
+    if (!fit) return false
+    value = String(Math.round(fit * zoom * 10_000) / 10_000)
+  } else value = zoom
+  if ((r.getAttribute('zoom') ?? 'fit-page') === value) return false
+  // pdf.js adds a new text layer each time it draws a page, without removing the old one.
+  for (const { doc } of r.getContents()) {
+    doc?.querySelector('.textLayer')?.replaceChildren()
+    doc?.querySelector('.annotationLayer')?.replaceChildren()
+  }
+  const before = currentScale(view)
+  const page = visiblePages(view).find((p) => p.size)?.frame
+  const box = r.getBoundingClientRect()
+  const start = page?.getBoundingClientRect()
+  // Pages taller than the view start at the top rather than being centred off the top edge (the
+  // pages' own auto margins still centre them when they're smaller); pages wider than the view
+  // are centred without cutting off their left edge.
+  r.style.alignItems = 'flex-start'
+  r.style.justifyContent = SAFE_CENTER ? 'safe center' : value === 'fit-page' ? '' : 'flex-start'
+  r.setAttribute('zoom', value)
+  const after = currentScale(view)
+  const end = page?.isConnected ? page.getBoundingClientRect() : null
+  if (focus && before && after && start && end) {
+    const ratio = after / before
+    r.scrollLeft += scrollToKeep(
+      end.left - box.left,
+      focus.x - (start.left - box.left),
+      ratio,
+      focus.x,
+    )
+    r.scrollTop += scrollToKeep(end.top - box.top, focus.y - (start.top - box.top), ratio, focus.y)
+  }
+  return true
 }
 
 /**
@@ -216,18 +388,45 @@ export function BookView(props: BookViewProps) {
   const ready = useRef(false)
   const marks = useRef(new Map<string, HighlightMark>())
   const speaking = useRef<string | null>(null)
+  /** Where the zoom asked for by a pinch or Ctrl+wheel was centred, in the view. */
+  const pendingFocus = useRef<{ x: number; y: number } | null>(null)
   const callbacks = useLatest(props)
   const initialLocation = useRef(props.initialLocation)
   const initialStyles = useLatest(styles)
   const initialLayout = useLatest(layout)
 
+  /** Where a zoomed page turned to should be scrolled: to its top, or (going back) its bottom. */
+  const landing = useRef<{ at: 'top' | 'bottom'; left: number } | null>(null)
+
+  /**
+   * Turns the page forward (1) or back (-1). Zoomed into a page, it scrolls down (or up) a screen
+   * first, and turns the page only at the bottom (or top).
+   */
+  const advance = (direction: 1 | -1) => {
+    const view = viewRef.current
+    if (!view) return
+    const r = view.renderer
+    if (view.isFixedLayout && r.scrollHeight - r.clientHeight > 2) {
+      const max = r.scrollHeight - r.clientHeight
+      const behavior = callbacks.current.layout.animated ? 'smooth' : 'auto'
+      const step = r.clientHeight * ZOOMED_SCROLL_FRACTION
+      if (direction > 0 ? r.scrollTop < max - 2 : r.scrollTop > 2) {
+        r.scrollBy({ top: direction * step, behavior })
+        return
+      }
+      landing.current = { at: direction > 0 ? 'top' : 'bottom', left: r.scrollLeft }
+    }
+    void (direction > 0 ? view.next() : view.prev())
+  }
+  const rtl = () => viewRef.current?.book.dir === 'rtl'
+
   useImperativeHandle(
     ref,
     () => ({
-      next: () => void viewRef.current?.next(),
-      prev: () => void viewRef.current?.prev(),
-      goLeft: () => void viewRef.current?.goLeft(),
-      goRight: () => void viewRef.current?.goRight(),
+      next: () => advance(1),
+      prev: () => advance(-1),
+      goLeft: () => advance(rtl() ? 1 : -1),
+      goRight: () => advance(rtl() ? -1 : 1),
       goTo: async (target) => {
         const view = viewRef.current
         if (!view) return
@@ -303,6 +502,8 @@ export function BookView(props: BookViewProps) {
         void view.renderer.scrollToAnchor?.(range)
       },
     }),
+    // `advance` reads everything through refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   )
 
@@ -372,8 +573,81 @@ export function BookView(props: BookViewProps) {
       callbacks.current.onTap(zoneAt(e.clientX, e.clientY))
     }
 
+    // Ctrl+wheel (and touchpad pinches, which arrive as it) zooms page-based books a step at a time.
+    let wheelZoom = 0
+    let wheelZoomLockedUntil = 0
+    const onWheelZoom = (e: WheelEvent, doc: Document | null) => {
+      if (!e.ctrlKey || !view.isFixedLayout) return
+      e.preventDefault()
+      if (callbacks.current.viewLocked) return
+      const now = performance.now()
+      if (now < wheelZoomLockedUntil) return
+      wheelZoom += e.deltaY
+      if (Math.abs(wheelZoom) < WHEEL_ZOOM_THRESHOLD) return
+      const box = view.renderer.getBoundingClientRect()
+      const at = doc ? toWindowPoint(e.clientX, e.clientY, doc) : { x: e.clientX, y: e.clientY }
+      pendingFocus.current = { x: at.x - box.left, y: at.y - box.top }
+      callbacks.current.onZoomRequest(stepZoom(zoomInfo(view).factor, wheelZoom < 0 ? 1 : -1))
+      wheelZoom = 0
+      wheelZoomLockedUntil = now + WHEEL_ZOOM_COOLDOWN_MS
+    }
+    const onHostWheel = (e: WheelEvent) => onWheelZoom(e, null)
+
+    // Pinching a page-based book: the view scales under the fingers, and the pages are drawn at
+    // the new size when they let go.
+    let pinch: { distance: number; factor: number; ratio: number; x: number; y: number } | null =
+      null
+    const spread = (t: TouchList) => {
+      const [a, b] = [t[0], t[1]]
+      return a && b ? Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) : 0
+    }
+    const endPinch = () => {
+      if (!pinch) return
+      const { factor, ratio, x, y } = pinch
+      pinch = null
+      const r = view.renderer
+      r.style.transform = ''
+      r.style.transformOrigin = ''
+      pendingFocus.current = { x, y }
+      callbacks.current.onZoomRequest(normalizeZoom(factor * ratio))
+    }
+
     const attachToPage = (doc: Document, index: number) => {
       textArea = textAreaOf(doc) ?? textArea
+      doc.addEventListener('wheel', (e) => onWheelZoom(e, doc), { passive: false })
+      doc.addEventListener(
+        'touchstart',
+        (e) => {
+          if (e.touches.length !== 2 || !view.isFixedLayout || callbacks.current.viewLocked) return
+          const [a, b] = [e.touches[0], e.touches[1]]
+          if (!a || !b) return
+          const box = view.renderer.getBoundingClientRect()
+          const at = toWindowPoint((a.clientX + b.clientX) / 2, (a.clientY + b.clientY) / 2, doc)
+          pinch = {
+            distance: spread(e.touches),
+            factor: zoomInfo(view).factor,
+            ratio: 1,
+            x: at.x - box.left,
+            y: at.y - box.top,
+          }
+          view.renderer.style.transformOrigin = `${pinch.x}px ${pinch.y}px`
+        },
+        { passive: true },
+      )
+      doc.addEventListener(
+        'touchmove',
+        (e) => {
+          if (!pinch || e.touches.length !== 2 || pinch.distance === 0) return
+          e.preventDefault()
+          const raw = spread(e.touches) / pinch.distance
+          // Out to the fit-page size (with a little give) and in to the largest zoom.
+          pinch.ratio = Math.min(MAX_ZOOM / pinch.factor, Math.max(0.85 / pinch.factor, raw))
+          view.renderer.style.transform = `scale(${pinch.ratio})`
+        },
+        { passive: false },
+      )
+      doc.addEventListener('touchend', endPinch)
+      doc.addEventListener('touchcancel', endPinch)
       const reportSelection = () => {
         const selection = doc.getSelection()
         if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
@@ -436,9 +710,7 @@ export function BookView(props: BookViewProps) {
         if (e.detail > 1) return
         if (e.defaultPrevented || (e.target as Element | null)?.closest?.('a[href]')) return
         if (!doc.getSelection()?.isCollapsed) return
-        const frame = doc.defaultView?.frameElement?.getBoundingClientRect()
-        const x = e.clientX + (frame?.left ?? 0)
-        const y = e.clientY + (frame?.top ?? 0)
+        const { x, y } = toWindowPoint(e.clientX, e.clientY, doc)
         // foliate reports highlight clicks from its own listener, after this one.
         setTimeout(() => {
           if (highlightClicked) {
@@ -465,6 +737,18 @@ export function BookView(props: BookViewProps) {
       attachToPage(e.detail.doc, e.detail.index)) as EventListener)
     view.addEventListener('relocate', ((e: CustomEvent<Location>) => {
       setHoveredNote(null)
+      if (view.isFixedLayout) {
+        // A new page keeps the zoom (re-fitted, if its size differs) and the column being read,
+        // and starts at its top, or at its bottom when going back from the top of the next.
+        const r = view.renderer
+        const land = landing.current
+        landing.current = null
+        const left = land?.left ?? r.scrollLeft
+        applyZoom(view, callbacks.current.zoom)
+        r.scrollTop = land?.at === 'bottom' ? r.scrollHeight : 0
+        r.scrollLeft = left
+        callbacks.current.onZoomInfo(zoomInfo(view))
+      }
       callbacks.current.onRelocate(e.detail, sectionPages(view))
     }) as EventListener)
     view.addEventListener('create-overlay', () => {
@@ -527,8 +811,20 @@ export function BookView(props: BookViewProps) {
     }) as EventListener)
 
     host.addEventListener('wheel', onWheel, { passive: true })
+    host.addEventListener('wheel', onHostWheel, { passive: false })
     host.addEventListener('pointerdown', onHostPointerDown)
     host.addEventListener('click', onHostClick)
+    // Zoomed to a factor of the fit-page size, the pages follow the window's size.
+    let refit: ReturnType<typeof setTimeout> | undefined
+    const resizes = new ResizeObserver(() => {
+      clearTimeout(refit)
+      refit = setTimeout(() => {
+        if (!ready.current || !view.isFixedLayout) return
+        applyZoom(view, callbacks.current.zoom)
+        callbacks.current.onZoomInfo(zoomInfo(view))
+      }, 150)
+    })
+    resizes.observe(host)
 
     ;(async () => {
       await view.open(book)
@@ -542,6 +838,10 @@ export function BookView(props: BookViewProps) {
       if (cancelled) return
       ready.current = true
       callbacks.current.onReady({ fixedLayout: view.isFixedLayout })
+      if (view.isFixedLayout) {
+        applyZoom(view, callbacks.current.zoom)
+        callbacks.current.onZoomInfo(zoomInfo(view))
+      }
     })().catch((e) => {
       if (!cancelled) callbacks.current.onError(e)
     })
@@ -551,6 +851,9 @@ export function BookView(props: BookViewProps) {
       cancelPendingTap()
       clearTimeout(settleSelection)
       host.removeEventListener('wheel', onWheel)
+      host.removeEventListener('wheel', onHostWheel)
+      resizes.disconnect()
+      clearTimeout(refit)
       host.removeEventListener('pointerdown', onHostPointerDown)
       host.removeEventListener('click', onHostClick)
       view.close()
@@ -568,6 +871,21 @@ export function BookView(props: BookViewProps) {
     const view = viewRef.current
     if (view && ready.current) applyLayout(view, layout)
   }, [layout])
+
+  const { zoom, viewLocked } = props
+  useEffect(() => {
+    const view = viewRef.current
+    if (!view || !ready.current || !view.isFixedLayout) return
+    const focus = pendingFocus.current ?? undefined
+    pendingFocus.current = null
+    if (applyZoom(view, zoom, focus)) callbacks.current.onZoomInfo(zoomInfo(view))
+  }, [zoom, callbacks])
+
+  // Locked, the view holds its place across: no sideways panning.
+  useEffect(() => {
+    const view = viewRef.current
+    if (view?.isFixedLayout) view.renderer.style.overflowX = viewLocked ? 'hidden' : ''
+  }, [viewLocked])
 
   // Highlights: draw what's new or changed, remove what's gone.
   useEffect(() => {
@@ -594,6 +912,8 @@ export function BookView(props: BookViewProps) {
         {
           width: '100%',
           height: '100%',
+          // A pinch scales the whole view until the fingers lift; it mustn't spill over the chrome.
+          overflow: 'hidden',
           '--overlayer-highlight-opacity': dark ? '0.3' : '1',
           '--overlayer-highlight-blend-mode': dark ? 'normal' : 'multiply',
         } as CSSProperties

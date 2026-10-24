@@ -20,7 +20,8 @@ This is the living plan. Update **Status** and the **Decisions log** whenever ei
 | M5 Stats & goals | **done** |
 | M6 Read-aloud | **speech-dispatcher done**; Piper voices and the download manager not started |
 | M7 Polish & ship | **mostly done**: open-book transition, reduce transparency, onboarding and empty states, PDF (experimental), app icon, RPM, DEB and AppImage (CI). Windows builds not started |
-| M8 Android | **built, not yet tried on a phone**: phone layout, touch, back gesture, All files access, read-aloud with lock-screen controls, catch-up on resume, signed APK in CI (§12) |
+| M8 Android | **built, not yet tried on a phone**: phone layout, touch, back gesture, All files access, read-aloud with lock-screen controls, catch-up on resume, keeping the screen on, volume-key page turns, signed APK in CI (§12) |
+| Library and reading extras (2026-10-24) | **done**: book details, deleting books, series grouping, zoom and view lock for PDFs and comics (§6, D23–D26). Checked in Chromium at desktop and phone sizes with a mocked core; not yet on a phone or in WebKitGTK |
 
 Checked in the running app (headless X11 on Linux, WebKitGTK 2.52):
 
@@ -34,9 +35,10 @@ Checked in the running app (headless X11 on Linux, WebKitGTK 2.52):
 - Book security, with an adversarial EPUB: scripts, inline handlers, forms, frames and remote
   images are all blocked
 
-Automated: 87 Rust tests (fingerprints, scanning and watching, the index, the store and its merge
-rules, `book://`, the SSIP client, the aura, covers, settings and command validation) and 40 Vitest tests
-(library model, highlights and Markdown export, stats, resurfacing, TOC labels, CSP, formatting).
+Automated: 96 Rust tests (fingerprints, scanning and watching, deleting, the index, the store and
+its merge rules, `book://`, the SSIP client, the Android events, the aura, covers, settings and
+command validation) and 92 Vitest tests (library model and series, highlights and Markdown export,
+stats, resurfacing, TOC labels, CSP, zoom, formatting).
 CI runs both on every push.
 
 Not yet measured against the milestone criteria:
@@ -253,8 +255,12 @@ tinted with the aura of that day's main book. The streak and the goal ring sit a
 - A "continue reading" hero
 - Search by title or author, and sorting
 - Statuses: reading, to read, finished
-- Shelves and series grouping
+- Shelves and series grouping: sorting by series puts each series under its name, in reading
+  order, and the books in none under "Not in a series"
 - Drag and drop to add a book (it is copied into the folder)
+- A details sheet per book: cover, series, status and progress, description, publisher, dates,
+  identifier and file
+- Deleting books, after asking: to the trash on the desktop, for good on Android (D23)
 
 **Reader:**
 - Paginated or scrolled, with a two-page spread on wide windows
@@ -267,6 +273,11 @@ tinted with the aura of that day's main book. The streak and the goal ring sit a
 - Keyboard, mouse wheel and touchpad
 - Typography and themes
 - Time left in the chapter and the book, based on your measured reading speed
+- Page-based books (PDF, CBZ, fixed-layout EPUB) zoom: fit page, fit width, or 125–400% of the
+  fit-page size, by buttons, Ctrl+wheel, Ctrl +/−/0 or a pinch. Zoomed in, "next" scrolls a
+  screen before it turns the page, and a page turned to keeps the horizontal position. A view
+  lock (offered only while zoomed) stops sideways panning and pinching (D24, D25). Reflowable
+  books have text size instead
 
 **Stats and goals (extra):**
 - Active-time sessions: a session pauses after 2 minutes idle or when the window loses focus
@@ -308,7 +319,8 @@ rules and session accounting; Vitest covers the UI logic. Test books come from S
 
 - foliate-js is imported only by `src/reader/foliate.ts` and `src/reader/BookView.tsx`. Bump the
   pinned commit deliberately and re-test M2/M3 when you do.
-- In the library folder, Rust writes only inside `.readlet/` and the books copied in by drag and drop.
+- In the library folder, Rust writes only inside `.readlet/` and the books copied in by drag and drop,
+  and deletes only book files the reader chose to delete (D23).
 - Network access happens only on an explicit action (a dictionary lookup, a voice download). No telemetry.
 - Tauri capabilities give each window the minimum it needs.
 - Never log book text, highlight text or notes.
@@ -339,6 +351,10 @@ rules and session accounting; Vitest covers the UI logic. Test books come from S
 | D20 | Android read-aloud uses the system TextToSpeech, one utterance per sentence (it can't report SSML marks); the Rust core splits the SSML, so the UI's read-aloud logic is shared | 2026-10-23 |
 | D21 | A media-playback foreground service runs while read-aloud is open (playing or paused): it keeps the process and WebView alive with the screen off and carries the lock-screen controls | 2026-10-23 |
 | D22 | Layout follows the screen width (≤ 640px is a phone), not the platform; platform checks are only for what the system provides (back gesture, insets, permissions) | 2026-10-23 |
+| D23 | Deleting a book moves the file to the trash on the desktop (the `trash` crate) and deletes it on Android, which has no trash for files; reading data stays, so the book picks up where it was if it comes back. The index forgets it at once so the scan that follows has nothing to announce | User, 2026-10-24 |
+| D24 | Zoom only for page-based books; reflowable books have text size. Zoom is a factor of the fit-page size, applied through foliate's `zoom` attribute on `<foliate-fxl>`, and kept per open book (not saved) | User, 2026-10-24 |
+| D25 | The view lock is offered only while zoomed in: it stops sideways panning and pinching, and keeps the column across page turns | User, 2026-10-24 |
+| D26 | Android keeps the screen on while reading (`FLAG_KEEP_SCREEN_ON`) until a set time after the last page turn or tap: System, 5, 10 (default) or 30 minutes. Volume keys turn pages when the setting is on, except while reading aloud, when they set the volume | User, 2026-10-24 |
 
 ## 10. Open questions
 
@@ -387,6 +403,9 @@ What's different:
   outer 30% of the page turn it; a highlight's note shows on tap. The status and navigation bars
   hide while reading and the page keeps clear of them (stable insets, so hiding them never
   reflows the text).
+- **Screen and volume keys** (D26). While the reader is open, `MainActivity` turns the volume
+  keys into `reader:page-key` events (if the setting is on), and the window keeps the screen on
+  until the chosen time after the last page turn or tap.
 - **Back gesture.** Acts as Escape (closing whatever is on top), then goes back to the library,
   then sends the app to the background.
 - **Selection menu.** The system's floating Copy/Share menu is emptied for book text, where
@@ -404,6 +423,9 @@ Not yet checked on a device (do these first):
    dialog.
 3. Read-aloud with the screen off through a chapter change, the lock-screen controls, a phone call
    and unplugging headphones.
-4. Progress after the app is swiped away; data from another device after Syncthing syncs while
+4. The screen staying on while reading and turning off after the chosen time; the volume keys
+   turning pages (and setting the volume while reading aloud); pinching a PDF and a comic;
+   deleting a book.
+5. Progress after the app is swiped away; data from another device after Syncthing syncs while
    Readlet is in the background.
-5. Memory, battery and cold start on a mid-range phone.
+6. Memory, battery and cold start on a mid-range phone.
