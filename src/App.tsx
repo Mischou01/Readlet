@@ -6,7 +6,13 @@ import { Dialog } from './components/Dialog'
 import { Toasts } from './components/Toasts'
 import { HighlightsView } from './highlights/HighlightsView'
 import { api, events, subscribeAll, toAppError } from './lib/ipc'
-import { fitAndroidScreen } from './lib/platform'
+import {
+  isAndroid,
+  leaveApp,
+  useBackGesture,
+  useStorageAccess,
+  useSystemBars,
+} from './lib/platform'
 import { handleWindowShortcut } from './lib/window'
 import { addBookFiles } from './library/actions'
 import { indexPendingBooks } from './library/indexer'
@@ -20,7 +26,7 @@ import { useLibrary } from './state/library'
 import { useStats } from './state/stats'
 import { showError } from './state/toasts'
 import { StatsView } from './stats/StatsView'
-import { useDocumentTheme } from './theme/aura'
+import { useColorScheme, useDocumentTheme, useThemeOverride } from './theme/aura'
 import styles from './App.module.css'
 
 export function App() {
@@ -28,13 +34,16 @@ export function App() {
   const info = useApp((s) => s.info)
   const error = useApp((s) => s.error)
   useDocumentTheme()
+  useBackGesture(goBack)
+  const storage = useStorageAccess()
+  const appScheme = useColorScheme()
+  const readerScheme = useThemeOverride((s) => s.override?.scheme)
+  const immersive = useApp((s) => s.immersive)
+  useSystemBars((readerScheme ?? appScheme) === 'dark', immersive)
 
   useEffect(() => {
     void useApp.getState().init()
   }, [])
-
-  const platform = info?.platform
-  useEffect(() => (platform === 'android' ? fitAndroidScreen() : undefined), [platform])
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => void handleWindowShortcut(e)
@@ -42,13 +51,22 @@ export function App() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
 
-  if (status === 'loading') return <div className={styles.splash} />
+  if (status === 'loading' || storage.access === 'checking')
+    return <div className={styles.splash} />
   if (status === 'error' || !info) {
     return (
       <div className={styles.fatal} role="alert">
         <h1>Readlet couldn’t start</h1>
         <p data-selectable>{error?.message}</p>
       </div>
+    )
+  }
+  if (storage.access === 'denied') {
+    return (
+      <>
+        <Onboarding needsAccess onAllowAccess={storage.request} />
+        <Toasts />
+      </>
     )
   }
   if (!info.libraryRoot) {
@@ -60,6 +78,13 @@ export function App() {
     )
   }
   return <Shell libraryRoot={info.libraryRoot} />
+}
+
+/** The back gesture when nothing on screen takes it: back to the library, then out of the app. */
+function goBack() {
+  const { info, view, navigate } = useApp.getState()
+  if (info?.libraryRoot && view.name !== 'library') navigate({ name: 'library' })
+  else leaveApp()
 }
 
 /** The app once a library is open: keeps data in step with the core and shows the views. */
@@ -171,6 +196,8 @@ function Shell({ libraryRoot }: { libraryRoot: string }) {
 function useDropToAdd(): boolean {
   const [over, setOver] = useState(false)
   useEffect(() => {
+    // Phones have nothing to drag files from.
+    if (isAndroid) return
     let unlisten: (() => void) | undefined
     let disposed = false
     getCurrentWebview()

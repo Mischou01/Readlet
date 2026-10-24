@@ -1,4 +1,4 @@
-//! The library folder: finding books in it, watching it and adding books to it.
+//! The library folder: finding books in it, watching it (on desktop) and adding books to it.
 //!
 //! Readlet never renames, moves or deletes the reader's files. In the library folder it only
 //! writes inside `.readlet/` and the books copied in by "Add books" (docs/PLAN.md §8).
@@ -6,10 +6,12 @@
 pub mod fingerprint;
 pub mod formats;
 pub mod scan;
+#[cfg(desktop)]
 pub mod watch;
 
 use std::fs;
 use std::path::{Component, Path, PathBuf};
+#[cfg(desktop)]
 use std::sync::Mutex;
 
 use crate::error::{Error, Result};
@@ -19,6 +21,7 @@ use formats::BookFormat;
 pub struct Library {
     pub root: PathBuf,
     pub store: Store,
+    #[cfg(desktop)]
     watcher: Mutex<Option<watch::Watcher>>,
 }
 
@@ -32,10 +35,12 @@ impl Library {
         Ok(Self {
             root,
             store,
+            #[cfg(desktop)]
             watcher: Mutex::new(None),
         })
     }
 
+    #[cfg(desktop)]
     pub fn set_watcher(&self, watcher: Option<watch::Watcher>) {
         *self.watcher.lock().unwrap_or_else(|e| e.into_inner()) = watcher;
     }

@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">"Readlet"</string>
+    <string name="main_activity_title">"Readlet"</string>
+    <string name="read_aloud_channel">Read-aloud</string>
+    <string name="previous_sentence">Previous sentence</string>
+    <string name="next_sentence">Next sentence</string>
+    <string name="play">Play</string>
+    <string name="pause">Pause</string>
+    <string name="stop">Stop reading aloud</string>
+</resources>

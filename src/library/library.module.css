@@ -41,8 +41,10 @@
   transition: transform 300ms var(--ease-out);
 }
 
-.heroCoverButton:hover {
-  transform: translateY(-3px);
+@media (hover: hover) {
+  .heroCoverButton:hover {
+    transform: translateY(-3px);
+  }
 }
 
 .heroText {
@@ -395,8 +397,10 @@
     box-shadow 260ms var(--ease-out);
 }
 
-.tileButton:hover > :first-child {
-  transform: translateY(-3px);
+@media (hover: hover) {
+  .tileButton:hover > :first-child {
+    transform: translateY(-3px);
+  }
 }
 
 /* -- Selecting ------------------------------------------------------------------------------ */
@@ -716,5 +720,187 @@
   .row > :nth-child(2),
   .row > :nth-child(3) {
     display: none;
+  }
+}
+
+/* -- Phones -------------------------------------------------------------------------------------
+   The hero becomes a compact card (cover beside the title, actions below), the tabs scroll
+   sideways, and the grid has three fluid columns. */
+
+@media (max-width: 640px) {
+  .main {
+    padding: 14px 16px calc(48px + var(--dock-space));
+  }
+
+  .hero {
+    gap: 28px;
+  }
+
+  .heroBook {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: end;
+    gap: 0 18px;
+    flex-basis: 100%;
+  }
+
+  .heroText {
+    display: contents;
+  }
+
+  .heroHeading {
+    grid-column: 2;
+    grid-row: 1;
+    padding-bottom: 2px;
+  }
+
+  .chips,
+  .heroProgress,
+  .heroActions {
+    grid-column: 1 / -1;
+  }
+
+  .eyebrow {
+    margin-bottom: 6px;
+    font-size: 13.5px;
+  }
+
+  .heroTitle {
+    font-size: 26px;
+    line-height: 1.12;
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .heroAuthor {
+    margin-top: 6px;
+    font-size: 15px;
+  }
+
+  .chips {
+    margin-top: 18px;
+  }
+
+  .heroProgress {
+    max-width: none;
+    margin-top: 16px;
+  }
+
+  .heroActions {
+    margin-top: 18px;
+    flex-wrap: nowrap;
+  }
+
+  .heroActions > button {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 0 14px;
+  }
+
+  .aside {
+    min-width: 0;
+    flex-basis: 100%;
+  }
+
+  .card {
+    padding: 20px 20px 22px;
+  }
+
+  .quote {
+    font-size: 19px;
+  }
+
+  .books {
+    margin-top: 40px;
+  }
+
+  .booksBar {
+    gap: 8px;
+  }
+
+  .tabs {
+    flex-wrap: nowrap;
+    width: calc(100% + 32px);
+    margin: 0 -16px;
+    padding: 0 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tab,
+  .shelfButton {
+    flex: none;
+    font-size: 15.5px;
+  }
+
+  .barActions {
+    width: 100%;
+  }
+
+  .barActions > :first-child {
+    margin-right: auto;
+  }
+
+  .grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    justify-content: stretch;
+    gap: 26px 14px;
+    margin-top: 20px;
+  }
+
+  .tile {
+    width: auto;
+    min-width: 0;
+  }
+
+  .tileTitle {
+    margin-top: 9px;
+    font-size: 13.5px;
+  }
+
+  .tileAuthor {
+    font-size: 12px;
+  }
+
+  .tileProgress .numeric {
+    display: none;
+  }
+
+  .row {
+    gap: 12px;
+    padding: 8px 4px;
+  }
+
+  .selectionBar {
+    bottom: calc(var(--dock-space) + 6px);
+    padding-left: 18px;
+  }
+
+  .selectionAction {
+    padding: 0 12px;
+  }
+
+  .search {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+  }
+
+  .emptyLibrary {
+    margin-top: 8vh;
+  }
+
+  .emptyLibrary h1 {
+    font-size: 32px;
+  }
+
+  .emptyLibrary .heroActions {
+    flex-wrap: wrap;
   }
 }

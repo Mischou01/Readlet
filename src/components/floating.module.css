@@ -113,7 +113,7 @@
 
 .backdrop {
   position: fixed;
-  inset: 0;
+  inset: 0 0 var(--keyboard-inset);
   z-index: 90;
   display: flex;
   align-items: center;
@@ -125,7 +125,7 @@
 .dialog {
   width: 420px;
   max-width: 100%;
-  max-height: calc(100vh - 48px);
+  max-height: 100%;
   overflow: auto;
   padding: 24px 26px 22px;
   border-radius: var(--radius-sheet);
@@ -160,6 +160,7 @@
 .popover {
   position: fixed;
   z-index: 60;
+  max-width: calc(100vw - 24px);
   border-radius: var(--radius-popover);
   border: 1px solid var(--glass-edge);
   background: var(--pop-bg);
@@ -167,11 +168,20 @@
   color: var(--ink);
 }
 
+/* A popover at the bottom of the screen, above the keyboard and the navigation bar (phones). */
+.docked {
+  left: 12px;
+  right: 12px;
+  bottom: calc(12px + max(var(--safe-bottom), var(--keyboard-inset)));
+  border-radius: 26px;
+  background: var(--solid);
+}
+
 .toasts {
   position: fixed;
   z-index: 120;
   left: 50%;
-  bottom: 64px;
+  bottom: max(64px, calc(var(--dock-space) + 10px));
   transform: translateX(-50%);
   display: flex;
   flex-direction: column;
@@ -209,4 +219,58 @@
   width: 12px;
   height: 12px;
   border-radius: 999px;
+}
+
+/* -- Phones -----------------------------------------------------------------------------------
+   Sheets rise from the bottom edge and can be dragged back down (Sheet.tsx). */
+
+.handle {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .sheet {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: auto;
+    max-width: none;
+    max-height: calc(100% - var(--safe-top) - 48px);
+    padding-bottom: max(var(--safe-bottom), var(--keyboard-inset));
+    border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
+    border-bottom: none;
+  }
+
+  .sheetHeader {
+    padding: 6px 10px 2px 22px;
+    touch-action: none;
+  }
+
+  .handle {
+    display: block;
+    width: 40px;
+    height: 5px;
+    margin: 10px auto 0;
+    border-radius: 999px;
+    background: var(--line);
+    touch-action: none;
+  }
+
+  .backdrop {
+    padding: 16px;
+  }
+
+  .dialog {
+    padding: 22px 20px 18px;
+  }
+
+  .menu {
+    max-width: calc(100vw - 24px);
+  }
+
+  .menuItem {
+    min-height: 46px;
+    font-size: 15px;
+  }
 }

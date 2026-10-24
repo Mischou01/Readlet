@@ -11,7 +11,7 @@ import { HIGHLIGHTS } from '../lib/highlightColors'
 import { newId } from '../lib/ids'
 import { api, toAppError } from '../lib/ipc'
 import { bookTitle } from '../lib/text'
-import { useIsMobile } from '../lib/platform'
+import { isBackGesture, useOnHide, usePhoneLayout, useTouchScreen } from '../lib/platform'
 import { handleWindowShortcut } from '../lib/window'
 import type { Annotation, BookRecord, HighlightColor } from '../lib/types'
 import { FINISHED_FRACTION, liveAnnotations, statusOf } from '../library/model'
@@ -69,6 +69,8 @@ const BYTES_PER_LOCATION = 1500
 const CHROME_HIDE_MS = 2000
 const PROGRESS_SAVE_MS = 1200
 const MARGIN_WIDTHS = { narrow: 760, medium: 640, wide: 540 } as const
+/** On a phone the text always fills the width, so the margin setting sets the space beside it. */
+const PHONE_GAPS = { narrow: '4%', medium: '6%', wide: '9%' } as const
 /** Two-page spreads only when there's room for two comfortable columns. */
 const SPREAD_MIN_WIDTH = 1500
 const NOTE_PREVIEW_DELAY_MS = 250
@@ -114,6 +116,8 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
   const reduceTransparency = usePreferences((s) => s.prefs.reduceTransparency)
   const systemScheme = useSystemColorScheme()
   const windowWidth = useWindowWidth()
+  const phone = usePhoneLayout()
+  const touchScreen = useTouchScreen()
 
   const [open, setOpen] = useState<OpenState>({ status: 'loading' })
   /** The open book's TOC, for naming chapters in event handlers. */
@@ -280,27 +284,29 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
     [fingerprint, saveProgressSoon, session, paceRelocated, recordRef],
   )
 
-  // Flush progress and the session when leaving the book or closing the window. Progress is also
-  // saved whenever Readlet goes to the background: Android closes apps without asking, so the
-  // close request never comes there.
+  // Flush progress and the session when leaving the book or closing the window.
   useEffect(() => {
     const unlisten = getCurrentWindow().onCloseRequested(async () => {
       saveProgressSoon.cancel()
       await Promise.all([saveProgress(), session.finish()])
     })
-    const onHidden = () => {
-      if (document.visibilityState !== 'hidden') return
-      saveProgressSoon.cancel()
-      void saveProgress()
-    }
-    document.addEventListener('visibilitychange', onHidden)
     return () => {
       saveProgressSoon.cancel()
       void saveProgress()
-      document.removeEventListener('visibilitychange', onHidden)
       void unlisten.then((fn) => fn())
     }
   }, [saveProgress, saveProgressSoon, session])
+
+  // A phone may stop the app once it's in the background: save the position and the session so
+  // far now. (The session carries on if the reader comes back.)
+  const checkpointSession = session.checkpoint
+  useOnHide(
+    useCallback(() => {
+      saveProgressSoon.cancel()
+      void saveProgress()
+      checkpointSession()
+    }, [saveProgress, saveProgressSoon, checkpointSession]),
+  )
 
   // -- Chrome visibility ------------------------------------------------------------------------
 
@@ -330,17 +336,17 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
     return () => clearTimeout(timer)
   }, [keepChrome, chromeVisible, pokes])
   const toolbarHidden = !keepChrome && !chromeVisible
-  // A phone has no room to spare: the footer goes with the toolbar. On a desktop it stays, like
-  // the page numbers in a printed book.
-  const mobile = useIsMobile()
+  // On a phone the system bars go with the toolbar, so the page has the whole screen.
+  const immersive = toolbarHidden && !readingAloud
+  useEffect(() => useApp.getState().setImmersive(immersive), [immersive])
+  useEffect(() => () => useApp.getState().setImmersive(false), [])
 
   const lastPointer = useRef({ x: -1, y: -1 })
   const onPointerMove = (e: React.PointerEvent) => {
     if (e.clientX === lastPointer.current.x && e.clientY === lastPointer.current.y) return
     lastPointer.current = { x: e.clientX, y: e.clientY }
     session.activity()
-    // Fingers move to swipe and scroll; a tap shows the toolbar instead.
-    if (e.pointerType !== 'touch') showChrome()
+    showChrome()
   }
 
   // -- Annotations ------------------------------------------------------------------------------
@@ -575,6 +581,13 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
     active: readingAloud && ready,
     language: entry?.language ?? null,
     accent,
+    book: {
+      fingerprint,
+      title,
+      chapter:
+        chapterLabel(open.status === 'ready' ? (open.book.toc ?? []) : [], location?.tocItem) ??
+        null,
+    },
     onEnded: () => setReadingAloud(false),
   })
 
@@ -646,6 +659,8 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
           if (readingAloud) {
             readAloud.stop()
             setReadingAloud(false)
+          } else if (isBackGesture(e)) {
+            navigate({ name: 'library' })
           } else {
             setChromeVisible((v) => !v)
           }
@@ -689,10 +704,12 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
       maxInlineSize: MARGIN_WIDTHS[readerPrefs.margins],
       maxColumnCount:
         readerPrefs.spread && windowWidth - (sheet ? 412 : 0) >= SPREAD_MIN_WIDTH ? 2 : 1,
-      margin: 96,
+      // Room for the footer below the text (and, on the desktop, the toolbar above it).
+      margin: phone ? 44 : 96,
+      gap: phone ? PHONE_GAPS[readerPrefs.margins] : '6%',
       animated: readerPrefs.animatePages && !matchMedia('(prefers-reduced-motion: reduce)').matches,
     }),
-    [readerPrefs, windowWidth, sheet],
+    [readerPrefs, windowWidth, sheet, phone],
   )
   const css = useMemo(
     () => readingCss({ theme, prefs: readerPrefs, accent }),
@@ -804,7 +821,12 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
         <IconButton
           glass
           label="Back to reading"
-          style={{ position: 'absolute', zIndex: 10, top: 20, left: 20 }}
+          style={{
+            position: 'absolute',
+            zIndex: 10,
+            top: 'calc(20px + var(--safe-top))',
+            left: 20,
+          }}
           onClick={() => {
             readAloud.stop()
             setReadingAloud(false)
@@ -817,6 +839,7 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
           title={title}
           chapter={chapter}
           hidden={toolbarHidden}
+          bottomBusy={overlayOpen}
           sheet={sheet}
           bookmarked={pageBookmarks.length > 0}
           bookmarksAdded={bookmarksAdded}
@@ -831,12 +854,12 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
 
       {!readingAloud && (
         <ReaderFooter
+          chromeHidden={toolbarHidden}
           fraction={location?.fraction ?? record?.progress?.fraction ?? 0}
           minutesLeft={minutesLeft}
           sectionPages={sectionPages}
           pageLabel={location?.pageItem?.label}
           bookmarks={bookmarkFractions}
-          hidden={mobile && toolbarHidden}
           onSeek={seek}
         />
       )}
@@ -885,6 +908,7 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
       {selection && !noteFor && !definition && (
         <SelectionBar
           anchor={selection.rect}
+          docked={phone}
           canDefine={canDefine}
           onHighlight={(c) => void onHighlight(c)}
           onNote={() => setNoteFor({ annotation: null, text: selection.text, cfi: selection.cfi })}
@@ -910,6 +934,8 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
       {activeHighlight && (
         <HighlightBar
           anchor={activeHighlight.rect}
+          docked={phone}
+          showNote={touchScreen}
           annotation={activeHighlight.annotation}
           onColor={(color) => {
             // Picking a colour makes it a highlight in its own right, kept if the note goes.

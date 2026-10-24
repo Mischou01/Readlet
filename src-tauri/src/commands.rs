@@ -95,70 +95,6 @@ pub async fn set_preferences(state: State<'_, AppState>, preferences: Value) -> 
 
 // -- Library -----------------------------------------------------------------------------------
 
-#[cfg(target_os = "android")]
-use tauri_plugin_readlet_android::Insets;
-/// Stands in for the Android plugin's type, which only builds for Android.
-#[cfg(not(target_os = "android"))]
-type Insets = ();
-
-#[cfg(not(target_os = "android"))]
-fn android_only<T>() -> Result<T> {
-    Err(Error::invalid("this is only needed on Android"))
-}
-
-/// Asks for a folder with Android's own picker, since the dialog plugin can't pick folders there.
-/// `None` if the reader cancelled.
-#[tauri::command]
-pub async fn pick_folder(app: AppHandle) -> Result<Option<String>> {
-    #[cfg(target_os = "android")]
-    {
-        tauri::async_runtime::spawn_blocking(move || {
-            tauri_plugin_readlet_android::pick_folder(&app)
-        })
-        .await
-        .map_err(|e| Error::invalid(format!("background task failed: {e}")))?
-        .map_err(Error::invalid)
-    }
-    #[cfg(not(target_os = "android"))]
-    {
-        let _ = app;
-        android_only()
-    }
-}
-
-/// Android only: how far in from each edge of the screen the UI should keep its controls.
-#[tauri::command]
-pub async fn screen_insets(app: AppHandle) -> Result<Insets> {
-    #[cfg(target_os = "android")]
-    {
-        tauri_plugin_readlet_android::insets(&app)
-            .await
-            .map_err(Error::invalid)
-    }
-    #[cfg(not(target_os = "android"))]
-    {
-        let _ = app;
-        android_only()
-    }
-}
-
-/// Android only: whether Android shows its own menu over selected text (Readlet shows its own
-/// over book text, but text fields need cut and paste).
-#[tauri::command]
-pub async fn set_native_text_menu(app: AppHandle, enabled: bool) -> Result<()> {
-    #[cfg(target_os = "android")]
-    {
-        tauri_plugin_readlet_android::set_native_text_menu(&app, enabled)
-            .await
-            .map_err(Error::invalid)
-    }
-    #[cfg(not(target_os = "android"))]
-    {
-        let _ = (app, enabled);
-        android_only()
-    }
-}
-
 #[tauri::command]
 pub async fn choose_library(app: AppHandle, path: String) -> Result<AppInfo> {
     blocking(&app.clone(), move |state| {
@@ -292,6 +228,9 @@ pub async fn add_books(app: AppHandle, paths: Vec<String>) -> Result<Vec<String>
 #[tauri::command]
 pub async fn reveal_book(app: AppHandle, fingerprint: String) -> Result<()> {
     check_fingerprint(&fingerprint)?;
+    if cfg!(mobile) {
+        return Err(Error::Unsupported("Showing a book in its folder"));
+    }
     blocking(&app, move |state| {
         let (path, _) = state.book_path(&fingerprint)?;
         tauri_plugin_opener::reveal_item_in_dir(path)

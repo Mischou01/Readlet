@@ -3,10 +3,9 @@ import { animate, motion, useReducedMotion } from 'motion/react'
 import { useEffect, useRef, useState, type MouseEvent, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { IconButton } from '../components/Button'
-import controls from '../components/controls.module.css'
 import { WindowControls } from '../components/WindowControls'
 import { useLatest } from '../lib/hooks'
-import { useIsMobile } from '../lib/platform'
+import { usePhoneLayout } from '../lib/platform'
 import styles from './reader.module.css'
 
 export type ReaderSheet = 'contents' | 'search' | 'text'
@@ -15,6 +14,8 @@ interface ReaderToolbarProps {
   title: string
   chapter: string | undefined
   hidden: boolean
+  /** Phones: something else is using the bottom of the screen (a sheet, the selection bar). */
+  bottomBusy: boolean
   sheet: ReaderSheet | null
   bookmarked: boolean
   /** Counts bookmarks added from here; each new one flies into Contents. */
@@ -27,105 +28,132 @@ interface ReaderToolbarProps {
   onHover: (hovering: boolean) => void
 }
 
-/** The floating glass toolbar; it fades out while you read. */
+/**
+ * The floating glass toolbar; it slides away while you read. On phones it splits in two: the
+ * title and bookmark stay at the top, and the tools move to a bar at the bottom, within reach of a
+ * thumb.
+ */
 export function ReaderToolbar(props: ReaderToolbarProps) {
   const { title, chapter, hidden, sheet, bookmarked, bookmarksAdded, readingAloud } = props
+  const phone = usePhoneLayout()
   const toggle = (s: ReaderSheet) => () => props.onSheet(s)
   const contentsIcon = useRef<HTMLSpanElement>(null)
   const bookmarkIcon = useRef<HTMLSpanElement>(null)
   const [landed, setLanded] = useState(0)
-  const mobile = useIsMobile()
-  return (
-    <header
-      className={styles.toolbar}
-      data-hidden={hidden || undefined}
-      data-tauri-drag-region
-      // Clicking a tool shouldn't leave it focused: the arrow keys and space turn pages, and a
-      // focus ring left on (say) the bookmark reads as "this page is still bookmarked".
-      onMouseDown={(e: MouseEvent) => {
-        if ((e.target as Element).closest('button')) e.preventDefault()
-      }}
-      onPointerEnter={() => props.onHover(true)}
-      onPointerLeave={() => props.onHover(false)}
-      onFocus={() => props.onHover(true)}
-      onBlur={() => props.onHover(false)}
+
+  const bookmark = (
+    <IconButton
+      label={bookmarked ? 'Remove bookmark' : 'Add bookmark'}
+      aria-pressed={bookmarked}
+      onClick={props.onToggleBookmark}
     >
-      <button type="button" className={styles.back} onClick={props.onBack}>
-        <ArrowLeft size={18} strokeWidth={1.8} aria-hidden="true" />
-        <span className={styles.backLabel}>Library</span>
-      </button>
-      <div className={styles.titleBlock} data-tauri-drag-region>
-        <span className={styles.bookTitle} data-tauri-drag-region>
-          {title}
+      <span ref={bookmarkIcon} className={styles.toolIcon}>
+        <Bookmark
+          size={19}
+          strokeWidth={1.8}
+          fill={bookmarked ? 'currentColor' : 'none'}
+          aria-hidden="true"
+        />
+      </span>
+    </IconButton>
+  )
+  const tools = (
+    <>
+      <IconButton label="Contents" aria-pressed={sheet === 'contents'} onClick={toggle('contents')}>
+        <motion.span
+          key={landed}
+          ref={contentsIcon}
+          className={styles.toolIcon}
+          initial={landed ? { scale: 1.3 } : false}
+          animate={{ scale: 1 }}
+          transition={{ type: 'spring', stiffness: 500, damping: 15 }}
+        >
+          <List size={19} strokeWidth={1.8} aria-hidden="true" />
+        </motion.span>
+      </IconButton>
+      <IconButton
+        label="Search in book"
+        aria-pressed={sheet === 'search'}
+        onClick={toggle('search')}
+      >
+        <Search size={19} strokeWidth={1.8} aria-hidden="true" />
+      </IconButton>
+      <IconButton label="Text settings" aria-pressed={sheet === 'text'} onClick={toggle('text')}>
+        <span className={styles.aa} aria-hidden="true">
+          Aa
         </span>
-        {chapter && (
-          <span className={styles.chapter} data-tauri-drag-region>
-            {chapter}
-          </span>
+      </IconButton>
+      <IconButton
+        label={readingAloud ? 'Stop reading aloud' : 'Read aloud'}
+        aria-pressed={readingAloud}
+        onClick={props.onReadAloud}
+      >
+        <Volume2 size={19} strokeWidth={1.8} aria-hidden="true" />
+      </IconButton>
+    </>
+  )
+  const flight = bookmarksAdded > 0 && (
+    <BookmarkFlight
+      key={bookmarksAdded}
+      from={bookmarkIcon}
+      to={contentsIcon}
+      onLanded={() => setLanded((n) => n + 1)}
+    />
+  )
+
+  return (
+    <>
+      <header
+        className={styles.toolbar}
+        data-hidden={hidden || undefined}
+        data-tauri-drag-region
+        // Clicking a tool shouldn't leave it focused: the arrow keys and space turn pages, and a
+        // focus ring left on (say) the bookmark reads as "this page is still bookmarked".
+        onMouseDown={(e: MouseEvent) => {
+          if ((e.target as Element).closest('button')) e.preventDefault()
+        }}
+        onPointerEnter={() => props.onHover(true)}
+        onPointerLeave={() => props.onHover(false)}
+        onFocus={() => props.onHover(true)}
+        onBlur={() => props.onHover(false)}
+      >
+        {phone ? (
+          <IconButton label="Back to library" onClick={props.onBack}>
+            <ArrowLeft size={20} strokeWidth={1.8} aria-hidden="true" />
+          </IconButton>
+        ) : (
+          <button type="button" className={styles.back} onClick={props.onBack}>
+            <ArrowLeft size={18} strokeWidth={1.8} aria-hidden="true" />
+            Library
+          </button>
         )}
-      </div>
-      <div className={styles.tools}>
-        <IconButton
-          label="Contents"
-          aria-pressed={sheet === 'contents'}
-          onClick={toggle('contents')}
-        >
-          <motion.span
-            key={landed}
-            ref={contentsIcon}
-            className={styles.toolIcon}
-            initial={landed ? { scale: 1.3 } : false}
-            animate={{ scale: 1 }}
-            transition={{ type: 'spring', stiffness: 500, damping: 15 }}
-          >
-            <List size={19} strokeWidth={1.8} aria-hidden="true" />
-          </motion.span>
-        </IconButton>
-        <IconButton
-          label="Search in book"
-          aria-pressed={sheet === 'search'}
-          onClick={toggle('search')}
-        >
-          <Search size={19} strokeWidth={1.8} aria-hidden="true" />
-        </IconButton>
-        <IconButton label="Text settings" aria-pressed={sheet === 'text'} onClick={toggle('text')}>
-          <span className={styles.aa} aria-hidden="true">
-            Aa
+        <div className={styles.titleBlock} data-tauri-drag-region>
+          <span className={styles.bookTitle} data-tauri-drag-region>
+            {title}
           </span>
-        </IconButton>
-        <IconButton
-          label={readingAloud ? 'Stop reading aloud' : 'Read aloud'}
-          aria-pressed={readingAloud}
-          onClick={props.onReadAloud}
+          {chapter && (
+            <span className={styles.chapter} data-tauri-drag-region>
+              {chapter}
+            </span>
+          )}
+        </div>
+        <div className={styles.tools}>
+          {!phone && tools}
+          {bookmark}
+          {flight}
+          <WindowControls />
+        </div>
+      </header>
+      {phone && (
+        <nav
+          className={styles.bottomTools}
+          aria-label="Reading tools"
+          data-hidden={hidden || props.bottomBusy || undefined}
         >
-          <Volume2 size={19} strokeWidth={1.8} aria-hidden="true" />
-        </IconButton>
-        <IconButton
-          label={bookmarked ? 'Remove bookmark' : 'Add bookmark'}
-          aria-pressed={bookmarked}
-          onClick={props.onToggleBookmark}
-        >
-          <span ref={bookmarkIcon} className={styles.toolIcon}>
-            <Bookmark
-              size={19}
-              strokeWidth={1.8}
-              fill={bookmarked ? 'currentColor' : 'none'}
-              aria-hidden="true"
-            />
-          </span>
-        </IconButton>
-        {bookmarksAdded > 0 && (
-          <BookmarkFlight
-            key={bookmarksAdded}
-            from={bookmarkIcon}
-            to={contentsIcon}
-            onLanded={() => setLanded((n) => n + 1)}
-          />
-        )}
-        {!mobile && <span className={controls.divider} aria-hidden="true" />}
-        <WindowControls />
-      </div>
-    </header>
+          {tools}
+        </nav>
+      )}
+    </>
   )
 }
 

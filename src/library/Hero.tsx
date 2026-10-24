@@ -4,6 +4,7 @@ import { Button } from '../components/Button'
 import { Cover } from '../components/Cover'
 import { ProgressBar } from '../components/Progress'
 import { formatAuthors, formatPercent, formatTimeLeft } from '../lib/format'
+import { usePhoneLayout } from '../lib/platform'
 import { readPosition } from '../state/positions'
 import { usePreferences } from '../state/preferences'
 import { paceFor } from '../stats/pace'
@@ -22,6 +23,7 @@ export function Hero({ book }: { book: LibraryBook }) {
     ? position.bytesLeftInSection / paceFor(bytesPerMinute, position.pace)
     : null
   const authors = formatAuthors(book.authors)
+  const phone = usePhoneLayout()
 
   return (
     <div className={styles.heroBook}>
@@ -32,12 +34,20 @@ export function Hero({ book }: { book: LibraryBook }) {
         aria-label={`Open ${book.title}`}
         onClick={() => openBook(book, { from: cover.current })}
       >
-        <Cover entry={book.entry} title={book.title} authors={book.authors} width={210} large />
+        <Cover
+          entry={book.entry}
+          title={book.title}
+          authors={book.authors}
+          width={phone ? 112 : 210}
+          large
+        />
       </button>
       <div className={styles.heroText}>
-        <p className={styles.eyebrow}>{started ? 'Continue reading' : 'Up next'}</p>
-        <h1 className={styles.heroTitle}>{book.title}</h1>
-        {authors && <p className={styles.heroAuthor}>{authors}</p>}
+        <div className={styles.heroHeading}>
+          <p className={styles.eyebrow}>{started ? 'Continue reading' : 'Up next'}</p>
+          <h1 className={styles.heroTitle}>{book.title}</h1>
+          {authors && <p className={styles.heroAuthor}>{authors}</p>}
+        </div>
         {started && (chapter || minutesLeft != null) && (
           <div className={styles.chips}>
             {chapter && (

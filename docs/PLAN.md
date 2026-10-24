@@ -1,8 +1,9 @@
 # Readlet — plan
 
-A desktop e-reader for people who read a lot: a calm, modern library and reader, plus reading
-stats, a highlights hub and read-aloud.
-Primary target: Fedora 44, GNOME on Wayland. Windows and macOS later from the same Tauri build.
+An e-reader for people who read a lot: a calm, modern library and reader, plus reading stats, a
+highlights hub and read-aloud.
+Primary target: Fedora 44, GNOME on Wayland; Android 11+ from the same code (§12). Windows and
+macOS later from the same Tauri build.
 
 This is the living plan. Update **Status** and the **Decisions log** whenever either changes.
 
@@ -18,7 +19,8 @@ This is the living plan. Update **Status** and the **Decisions log** whenever ei
 | M4 Highlights hub | **done** |
 | M5 Stats & goals | **done** |
 | M6 Read-aloud | **speech-dispatcher done**; Piper voices and the download manager not started |
-| M7 Polish & ship | **mostly done**: open-book transition, reduce transparency, onboarding and empty states, PDF (experimental), app icon, RPM and DEB. AppImage and Windows builds not started |
+| M7 Polish & ship | **mostly done**: open-book transition, reduce transparency, onboarding and empty states, PDF (experimental), app icon, RPM, DEB and AppImage (CI). Windows builds not started |
+| M8 Android | **built, not yet tried on a phone**: phone layout, touch, back gesture, All files access, read-aloud with lock-screen controls, catch-up on resume, signed APK in CI (§12) |
 
 Checked in the running app (headless X11 on Linux, WebKitGTK 2.52):
 
@@ -46,10 +48,13 @@ Not yet measured against the milestone criteria:
 
 ## Next session (start here)
 
-1. Try a real install on Fedora (`bun tauri build`, then install the RPM) and run through the
+1. Install the APK on a phone and go through §12's checklist; nothing Android-specific has run on a
+   device yet (the build environment had no emulator).
+2. Try a real install on Fedora (`bun tauri build`, then install the RPM) and run through the
    unchecked criteria above.
-2. Piper voices (open question 3), then offline dictionaries.
-3. AppImage and Windows builds; re-anchoring highlights when a book is replaced by a new edition.
+3. Piper voices (open question 3), then offline dictionaries.
+4. Windows builds; re-anchoring highlights when a book is replaced by a new edition.
+5. Optional in-app sync over WebDAV (open question 6).
 
 Known issue: when the reader closes, foliate-js's paginator can run a queued `requestAnimationFrame`
 or `fonts.ready` callback after the view is destroyed. This logs a harmless `doc.documentElement`
@@ -328,6 +333,12 @@ rules and session accounting; Vitest covers the UI logic. Test books come from S
 | D14 | Read-aloud talks to Speech Dispatcher with a small SSIP client of our own, rather than a crate, to get index-mark events for sentence sync | 2026-10-22 |
 | D15 | Every book page gets a strict CSP (no scripts, forms, frames or remote resources) in addition to the app's own CSP | 2026-10-22 |
 | D16 | Audio goes through Speech Dispatcher's own output, so rodio isn't needed until Piper | 2026-10-22 |
+| D17 | Android through Tauri 2's mobile support, from the same Rust core and UI. Distributed as an APK (one arm64 build per release), not on the Play Store | User, 2026-10-23 |
+| D18 | On Android, "All files access" (MANAGE_EXTERNAL_STORAGE) so the core reads the folder by path like on desktop; hence minSdk 30. The Storage Access Framework would mean rewriting scanning and the store around content URIs | 2026-10-23 |
+| D19 | No folder watching on Android: the core rescans and diffs other devices' files when the app returns to the foreground | 2026-10-23 |
+| D20 | Android read-aloud uses the system TextToSpeech, one utterance per sentence (it can't report SSML marks); the Rust core splits the SSML, so the UI's read-aloud logic is shared | 2026-10-23 |
+| D21 | A media-playback foreground service runs while read-aloud is open (playing or paused): it keeps the process and WebView alive with the screen off and carries the lock-screen controls | 2026-10-23 |
+| D22 | Layout follows the screen width (≤ 640px is a phone), not the platform; platform checks are only for what the system provides (back gesture, insets, permissions) | 2026-10-23 |
 
 ## 10. Open questions
 
@@ -339,7 +350,10 @@ rules and session accounting; Vitest covers the UI logic. Test books come from S
    Dispatcher's output module provides, so a Piper module configured there should work as is
    (not yet tried).
 4. ~~PDF?~~ Yes, labelled experimental (D13).
-5. Android later via Tauri 2? If so, avoid desktop-only APIs in the UI layer.
+5. ~~Android?~~ Yes, via Tauri 2 (D17–D22, §12).
+6. In-app sync over WebDAV (Nextcloud, a home server, kDrive), so phones don't need a sync app.
+   Each device writes only its own folder, so it would be "upload mine, download the others".
+   Until then: Syncthing-Fork on Android, or FolderSync for Google Drive.
 
 ## 11. References
 
@@ -349,3 +363,47 @@ rules and session accounting; Vitest covers the UI logic. Test books come from S
 - WebKitGTK sandbox hides speech providers: https://bugs.webkit.org/show_bug.cgi?id=280684
 - Piper (GPL fork): https://github.com/OHF-Voice/piper1-gpl
 - Standard Ebooks: https://standardebooks.org
+
+## 12. Android
+
+The same Rust core and UI, in Tauri's Android shell (`src-tauri/gen/android`, checked in).
+
+What's different:
+
+- **Files.** "All files access" (D18). The first run asks for it; it's checked again whenever the
+  app returns, since it can be revoked in Settings. The folder picker is the system's tree picker,
+  converted back to a path (primary storage and SD cards only). "Add books" copies picked
+  documents through the app's cache.
+- **Keeping up with the folder.** No watcher (D19). On resume the core rescans and compares
+  snapshots of other devices' files in `.readlet/` (`Store::snapshot`, `changes_between`).
+- **Read-aloud** (D20, D21). `Speech.kt` queues one utterance per sentence and reports each start
+  as a mark; `PlaybackService.kt` holds audio focus and a wake lock, pauses for calls and unplugged
+  headphones, and turns the notification, lock screen and headset buttons into `tts:remote`
+  events. Pausing still stops and restarts the sentence, as on desktop.
+- **Lifecycle.** Android may stop a backgrounded app without warning, so the reader saves progress
+  and checkpoints the session when the page is hidden (`app:suspended` and `visibilitychange`).
+- **Phone layout** (D22). Bottom navigation dock; bottom sheets that can be pulled down; the
+  reader's tools at the bottom; selection and highlight bars docked at the bottom; taps on the
+  outer 30% of the page turn it; a highlight's note shows on tap. The status and navigation bars
+  hide while reading and the page keeps clear of them (stable insets, so hiding them never
+  reflows the text).
+- **Back gesture.** Acts as Escape (closing whatever is on top), then goes back to the library,
+  then sends the app to the background.
+- **Selection menu.** The system's floating Copy/Share menu is emptied for book text, where
+  Readlet's own bar covers it; text fields keep cut and paste (`MainActivity.kt`).
+
+Checked so far: the Rust core builds and passes clippy for `aarch64-linux-android`; the APK builds
+(debug and signed release); the UI was checked in Chromium (Android's WebView engine) at phone size
+with an Android user agent and a mocked core, for every view, sheet and bar.
+
+Not yet checked on a device (do these first):
+
+1. First run: the access prompt, picking `Books`, scanning, covers.
+2. Reading: swipes and taps, selection by long press (no system menu over Readlet's bar), notes on
+   tap, the back gesture everywhere, system bars hiding and coming back, the keyboard over the note
+   dialog.
+3. Read-aloud with the screen off through a chapter change, the lock-screen controls, a phone call
+   and unplugging headphones.
+4. Progress after the app is swiped away; data from another device after Syncthing syncs while
+   Readlet is in the background.
+5. Memory, battery and cold start on a mid-range phone.

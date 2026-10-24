@@ -382,3 +382,71 @@
     padding-left: 0;
   }
 }
+
+/* Phones: the book filter becomes a row that scrolls sideways, so the highlights come sooner. */
+@media (max-width: 640px) {
+  .main {
+    padding: 14px 16px calc(40px + var(--dock-space));
+  }
+
+  .title {
+    font-size: 30px;
+  }
+
+  .titleActions,
+  .search {
+    width: 100%;
+  }
+
+  .layout {
+    gap: 32px;
+    margin-top: 24px;
+  }
+
+  .filters {
+    gap: 18px;
+    min-width: 0;
+  }
+
+  .bookFilters {
+    flex-direction: row;
+    gap: 6px;
+    margin: 0 -16px;
+    padding: 2px 16px 8px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .bookFilters::-webkit-scrollbar {
+    display: none;
+  }
+
+  .bookFilter {
+    flex: none;
+    max-width: 220px;
+    min-height: 44px;
+    padding: 4px 14px 4px 6px;
+    border-radius: var(--radius-pill);
+  }
+
+  .bookFilter > :first-child {
+    transform: scale(0.8);
+  }
+
+  .groups {
+    gap: 40px;
+  }
+
+  .groupTitle {
+    font-size: 21px;
+  }
+
+  .items {
+    gap: 24px;
+    margin-top: 18px;
+  }
+
+  .quote {
+    font-size: 18px;
+  }
+}

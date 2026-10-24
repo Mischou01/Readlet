@@ -3,6 +3,8 @@ import type { SectionPages } from './BookView'
 import styles from './reader.module.css'
 
 interface ReaderFooterProps {
+  /** While the toolbar is away the bar is only a gauge: a stray touch mustn't jump. */
+  chromeHidden: boolean
   fraction: number
   /** Minutes left in the chapter at the reader's own pace. */
   minutesLeft: number | null
@@ -11,8 +13,6 @@ interface ReaderFooterProps {
   pageLabel?: string
   /** Where the bookmarks are, as fractions of the book. */
   bookmarks: number[]
-  /** Tucked away with the toolbar (on phones). */
-  hidden: boolean
   onSeek: (fraction: number) => void
 }
 
@@ -21,17 +21,17 @@ interface ReaderFooterProps {
  * slider over the bar for jumping around.
  */
 export function ReaderFooter({
+  chromeHidden,
   fraction,
   minutesLeft,
   sectionPages,
   pageLabel,
   bookmarks,
-  hidden,
   onSeek,
 }: ReaderFooterProps) {
   const pct = Math.round(fraction * 1000) / 10
   return (
-    <footer className={styles.footer} data-hidden={hidden || undefined}>
+    <footer className={styles.footer} data-chrome-hidden={chromeHidden || undefined}>
       <div className={styles.footerText}>
         <span className={styles.chapterProgress}>
           <span>{minutesLeft != null ? formatTimeLeft(minutesLeft, 'chapter') : ''}</span>

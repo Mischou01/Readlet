@@ -4,7 +4,7 @@ import { AppHeader } from '../components/AppHeader'
 import { AuraField } from '../components/AuraField'
 import { Button, IconButton } from '../components/Button'
 import { pluralize } from '../lib/format'
-import { useIsMobile } from '../lib/platform'
+import { isAndroid } from '../lib/platform'
 import { useApp } from '../state/app'
 import { useLibrary, useLibraryBooks } from '../state/library'
 import { useAuraFor } from '../theme/aura'
@@ -34,7 +34,6 @@ export function LibraryView() {
   const loaded = useLibrary((s) => s.loaded)
   const scanning = useLibrary((s) => s.scanning)
   const setSettingsOpen = useApp((s) => s.setSettingsOpen)
-  const mobile = useIsMobile()
   const [searching, setSearching] = useState(false)
   const [query, setQuery] = useState('')
   const hero = useMemo(() => heroBook(books), [books])
@@ -56,12 +55,9 @@ export function LibraryView() {
           <Search size={19} strokeWidth={1.8} aria-hidden="true" />
         </IconButton>
       )}
-      {/* On Android the picker hands back `content://` files that can't be copied by path yet. */}
-      {!mobile && (
-        <IconButton glass label="Add books" onClick={() => void pickAndAddBooks()}>
-          <Plus size={19} strokeWidth={1.8} aria-hidden="true" />
-        </IconButton>
-      )}
+      <IconButton glass label="Add books" onClick={() => void pickAndAddBooks()}>
+        <Plus size={19} strokeWidth={1.8} aria-hidden="true" />
+      </IconButton>
       <IconButton glass label="Settings" onClick={() => setSettingsOpen(true)}>
         <SlidersVertical size={19} strokeWidth={1.8} aria-hidden="true" />
       </IconButton>
@@ -145,32 +141,23 @@ function IndexingStatus() {
 
 function EmptyLibrary() {
   const root = useApp((s) => s.info?.libraryRoot)
-  const mobile = useIsMobile()
-  const folder = root ? <strong>{root}</strong> : 'your books folder'
   return (
     <div className={styles.emptyLibrary}>
       <h1>Your shelves are waiting</h1>
-      {mobile ? (
-        <p>
-          There are no books in {folder} yet. Put EPUB, MOBI, AZW3, FB2, CBZ or PDF (experimental)
-          files there with your file manager, and they’ll appear here.
-        </p>
-      ) : (
-        <p>
-          There are no books in {folder} yet. Add some, or drop EPUB, MOBI, AZW3, FB2, CBZ or PDF
-          (experimental) files anywhere in this window.
-        </p>
-      )}
+      <p>
+        There are no books in {root ? <strong>{root}</strong> : 'your books folder'} yet.{' '}
+        {isAndroid
+          ? 'Add some, or put EPUB, MOBI, AZW3, FB2, CBZ or PDF (experimental) files in that folder.'
+          : 'Add some, or drop EPUB, MOBI, AZW3, FB2, CBZ or PDF (experimental) files anywhere in this window.'}
+      </p>
       <div className={styles.heroActions}>
-        {!mobile && (
-          <Button
-            variant="primary"
-            icon={<Plus size={18} aria-hidden="true" />}
-            onClick={() => void pickAndAddBooks()}
-          >
-            Add books
-          </Button>
-        )}
+        <Button
+          variant="primary"
+          icon={<Plus size={18} aria-hidden="true" />}
+          onClick={() => void pickAndAddBooks()}
+        >
+          Add books
+        </Button>
         <Button
           icon={<FolderOpen size={18} strokeWidth={1.8} aria-hidden="true" />}
           onClick={() => void pickLibraryFolder()}

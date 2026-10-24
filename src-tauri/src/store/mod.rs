@@ -393,6 +393,47 @@ impl Store {
     }
 }
 
+/// The size and modification time of every file other devices have written. Comparing two
+/// snapshots finds what a sync tool delivered while nothing was watching the folder (on Android,
+/// while the app was in the background).
+#[cfg(any(mobile, test))]
+pub type Snapshot = HashMap<PathBuf, (u64, Option<std::time::SystemTime>)>;
+
+#[cfg(any(mobile, test))]
+impl Store {
+    pub fn snapshot(&self) -> Snapshot {
+        let own = self.own_dir();
+        self.device_dirs()
+            .into_iter()
+            .filter(|dir| *dir != own)
+            .flat_map(|dir| walkdir::WalkDir::new(dir).max_depth(2))
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| entry.file_type().is_file())
+            .filter_map(|entry| {
+                let meta = entry.metadata().ok()?;
+                Some((entry.into_path(), (meta.len(), meta.modified().ok())))
+            })
+            .collect()
+    }
+
+    /// What changed between two snapshots. Cached book records that changed are reloaded.
+    pub fn changes_between(&self, before: &Snapshot, after: &Snapshot) -> StoreChanges {
+        let added_or_changed = after
+            .iter()
+            .filter(|(path, stamp)| before.get(*path) != Some(*stamp))
+            .map(|(path, _)| path);
+        let removed = before.keys().filter(|path| !after.contains_key(*path));
+        let mut changes = StoreChanges::default();
+        for path in added_or_changed.chain(removed) {
+            if let Some(change) = self.classify(path) {
+                changes.add(change);
+            }
+        }
+        self.invalidate_books(&changes.books);
+        changes
+    }
+}
+
 /// Reads a JSON Lines file, skipping lines that don't parse (a sync tool may deliver a file
 /// whose last line is still incomplete).
 fn read_jsonl<T: serde::de::DeserializeOwned>(path: &Path) -> Vec<T> {
@@ -633,6 +674,40 @@ mod tests {
             None
         );
         assert_eq!(store.classify(&dir.path().join("book.epub")), None);
+    }
+
+    #[test]
+    fn snapshots_find_what_other_devices_changed() {
+        let dir = tempfile::tempdir().unwrap();
+        let phone = Store::open(dir.path(), LAPTOP, "Phone").unwrap();
+        let desktop = Store::open(dir.path(), DESKTOP, "Desktop").unwrap();
+        let before = phone.snapshot();
+        assert!(phone.book(FP).annotations.is_empty());
+
+        // Our own writes aren't reported; theirs are, and the cached record is refreshed.
+        phone.update_profile(|p| p.daily_minutes = None).unwrap();
+        desktop
+            .update_book(FP, |r| {
+                r.annotations.push(highlight("h1", 1));
+                Ok(())
+            })
+            .unwrap();
+        desktop
+            .put_shelf(Shelf {
+                id: "s1".into(),
+                name: "Poetry".into(),
+                books: vec![],
+                updated_at: 1,
+                deleted: false,
+            })
+            .unwrap();
+        let after = phone.snapshot();
+        let changes = phone.changes_between(&before, &after);
+        assert_eq!(changes.books, vec![FP.to_owned()]);
+        assert!(changes.shelves && !changes.profile && !changes.sessions);
+        assert_eq!(phone.book(FP).annotations.len(), 1);
+
+        assert!(phone.changes_between(&after, &phone.snapshot()).is_empty());
     }
 
     #[test]

@@ -1,7 +1,8 @@
 import { X } from 'lucide-react'
-import { motion } from 'motion/react'
+import { motion, useDragControls, type PanInfo } from 'motion/react'
 import { useEffect, useId, useRef, type CSSProperties, type ReactNode } from 'react'
 import { useEscape } from '../lib/hooks'
+import { usePhoneLayout } from '../lib/platform'
 import { IconButton } from './Button'
 import styles from './floating.module.css'
 
@@ -17,7 +18,14 @@ interface SheetProps {
   className?: string
 }
 
-/** A glass side sheet that slides in from the right. Escape closes it. */
+/** How far (px) or how fast (px/s) a sheet must be pulled down to close. */
+const DISMISS_DISTANCE = 110
+const DISMISS_VELOCITY = 600
+
+/**
+ * A glass side sheet that slides in from the right; on phones, a bottom sheet that rises from the
+ * bottom edge and closes when pulled down by its header. Escape (or the back gesture) closes it.
+ */
 export function Sheet({
   title,
   onClose,
@@ -29,7 +37,12 @@ export function Sheet({
 }: SheetProps) {
   const ref = useRef<HTMLElement>(null)
   const titleId = useId()
+  const phone = usePhoneLayout()
+  const drag = useDragControls()
   useEscape(onClose)
+  const onDragEnd = (_: unknown, info: PanInfo) => {
+    if (info.offset.y > DISMISS_DISTANCE || info.velocity.y > DISMISS_VELOCITY) onClose()
+  }
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null
     // Without preventScroll, focusing the sheet while it's still off-screen scrolls its container
@@ -46,12 +59,25 @@ export function Sheet({
       className={`${styles.sheet} ${className ?? ''}`}
       style={style}
       // Slides in from the edge without fading: frosted glass that fades pops when the fade ends.
-      initial={{ x: '110%' }}
-      animate={{ x: 0 }}
-      exit={{ x: '110%', transition: { duration: 0.2, ease: [0.4, 0, 1, 1] } }}
+      initial={phone ? { y: '110%' } : { x: '110%' }}
+      animate={phone ? { y: 0 } : { x: 0 }}
+      exit={{
+        ...(phone ? { y: '110%' } : { x: '110%' }),
+        transition: { duration: 0.2, ease: [0.4, 0, 1, 1] },
+      }}
       transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+      // Pulled down by the header (not the body, which scrolls).
+      drag={phone ? 'y' : false}
+      dragListener={false}
+      dragControls={drag}
+      dragConstraints={{ top: 0, bottom: 0 }}
+      dragElastic={{ top: 0, bottom: 0.8 }}
+      onDragEnd={onDragEnd}
     >
-      <div className={styles.sheetHeader}>
+      {phone && (
+        <div className={styles.handle} onPointerDown={(e) => drag.start(e)} aria-hidden="true" />
+      )}
+      <div className={styles.sheetHeader} onPointerDown={(e) => phone && drag.start(e)}>
         <h2 id={titleId}>{title}</h2>
         <div style={{ display: 'flex', alignItems: 'center' }}>
           {actions}

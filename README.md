@@ -1,7 +1,7 @@
 # Readlet
 
-A desktop e-reader for Linux. It opens books from a folder you choose and keeps your progress,
-highlights and reading stats in that folder. Built with Tauri 2, React and
+An e-reader for Linux and Android. It opens books from a folder you choose and keeps your
+progress, highlights and reading stats in that folder. Built with Tauri 2, React and
 [foliate-js](https://github.com/johnfactotum/foliate-js); developed on Fedora with GNOME (Wayland).
 
 ![The library](docs/screenshots/library.webp)
@@ -21,8 +21,9 @@ highlights and reading stats in that folder. Built with Tauri 2, React and
   searchable. Exports to Markdown, one file per book with YAML front matter.
 - **Stats:** active reading time (idle time doesn't count), streaks, reading speed, and daily
   and yearly goals.
-- **Read-aloud** through Speech Dispatcher, from any point or for a selected passage only, with
-  speed, voice and a sleep timer.
+- **Read-aloud** through Speech Dispatcher on Linux and the system's text-to-speech on Android,
+  from any point or for a selected passage only, with speed, voice and a sleep timer. On Android
+  it keeps going with the screen off and has controls on the lock screen.
 
 Formats: EPUB, MOBI, AZW3, FB2 and CBZ; PDF support is experimental. DRM-protected books can't be
 opened.
@@ -47,20 +48,44 @@ folder inside the books folder:
 ```
 
 Each device writes only to its own folder, and Readlet merges all of them when reading. The books
-folder can therefore be synced with Syncthing, Nextcloud or similar without conflicts. Books are
+folder can therefore be synced with Syncthing, Nextcloud or similar without conflicts. On Android,
+[Syncthing-Fork](https://f-droid.org/packages/com.github.catfriend1.syncthingfork/) (F-Droid)
+syncs the folder with your other machines. Books are
 identified by a fingerprint of their contents, so a renamed or moved file keeps its data. The
 SQLite index in the app's data directory is a cache, rebuilt from the folder.
 
 ## Install
 
-CI builds `.rpm` and `.deb` packages on every push to `main` and publishes them as the
-`main-build` pre-release on the Releases page.
+CI builds a `.deb`, an `.rpm`, an AppImage and an Android APK (arm64) on every push to `main`
+and publishes them as the `main-build` pre-release on the Releases page. Tagging a commit
+`v<version>` publishes a release of that version.
+
+### Linux
 
 Read-aloud needs Speech Dispatcher and a voice. On Fedora:
 
 ```sh
 sudo dnf install speech-dispatcher espeak-ng
 ```
+
+The AppImage needs no installation (`chmod +x` it and run it). It can't declare dependencies, so
+install Speech Dispatcher yourself for read-aloud.
+
+### Android
+
+Android 11 or newer. Download the APK on the phone and open it; Android asks you to allow
+installing apps from your browser or file manager first.
+
+- **Files:** Readlet reads books straight from a folder, as on the desktop, so it asks for
+  _All files access_ on first start. That's also why it isn't on the Play Store, which doesn't
+  allow this permission for e-readers. Choose a folder on the phone's storage or SD card, such
+  as `Books`.
+- **Read-aloud** uses the phone's text-to-speech engine (Settings › Accessibility ›
+  Text-to-speech): usually Speech Services by Google; RHVoice and eSpeak NG on F-Droid work too.
+  Voices marked "online" send the text to the engine's servers.
+- The library is rescanned whenever Readlet comes back to the foreground, which also picks up
+  reading data synced from your other devices. Phones suspend apps in the background, so the
+  desktop's live folder watching isn't used.
 
 ## Development
 
@@ -84,15 +109,55 @@ cargo test --manifest-path src-tauri/Cargo.toml
 bun tauri build        # release build and packages
 ```
 
+For Android you also need the Android SDK, the NDK and JDK 17 or newer
+([Tauri's Android prerequisites](https://v2.tauri.app/start/prerequisites/#android)), with
+`ANDROID_HOME` and `NDK_HOME` set. Then:
+
+```sh
+rustup target add aarch64-linux-android
+bun tauri android dev                               # on a connected phone or an emulator
+bun tauri android build --apk --target aarch64      # release APK
+```
+
+The Android project in `src-tauri/gen/android/` is checked in: it holds the Kotlin side of the
+app (`ReadletPlugin.kt`, `Speech.kt`, `PlaybackService.kt`, `MainActivity.kt`) and the manifest.
+Layouts follow the screen size, so most of the phone layout can be worked on in a desktop
+browser's device mode; anything that calls the Rust core needs the app.
+
+### Signing the APK
+
+Android only installs signed APKs, and only updates an app with an APK signed by the same key.
+Create a key once and keep it safe (if it's lost, the app has to be uninstalled before a build
+signed with a new key will install):
+
+```sh
+keytool -genkeypair -v -storetype PKCS12 -keystore readlet.keystore -alias readlet \
+  -keyalg RSA -keysize 4096 -validity 10000
+```
+
+For CI, add two repository secrets (Settings › Secrets and variables › Actions):
+`ANDROID_KEYSTORE`, the output of `base64 -w0 readlet.keystore`, and
+`ANDROID_KEYSTORE_PASSWORD`. Without them CI still builds the APK but doesn't publish it. For
+local release builds, create `src-tauri/gen/android/keystore.properties` (it's ignored by git):
+
+```properties
+storeFile=/path/to/readlet.keystore
+keyAlias=readlet
+password=…
+```
+
 | Path                                                           | Contents                                                 |
 | -------------------------------------------------------------- | -------------------------------------------------------- |
 | `src-tauri/src/library/`                                       | Scanning, watching and fingerprinting the books folder   |
 | `src-tauri/src/store/`                                         | Per-device data files and merging                        |
 | `src-tauri/src/index.rs`                                       | SQLite index (a cache)                                   |
 | `src-tauri/src/protocol.rs`                                    | `book://` and `cover://`, which serve indexed files only |
-| `src-tauri/src/tts/`                                           | Speech Dispatcher (SSIP) client                          |
+| `src-tauri/src/tts/`                                           | Read-aloud: Speech Dispatcher (SSIP) and Android TTS     |
+| `src-tauri/src/android/`, `src-tauri/src/platform.rs`          | The bridge to the Kotlin side, and Android-only commands |
+| `src-tauri/gen/android/`                                       | The Android project and its Kotlin code                  |
 | `src/library/`, `src/reader/`, `src/highlights/`, `src/stats/` | The four views                                           |
 | `src/reader/foliate.ts`, `src/reader/BookView.tsx`             | The only modules that use foliate-js                     |
+| `src/lib/platform.ts`                                          | What differs on Android: insets, back gesture, lifecycle |
 | `vendor/foliate-js/`                                           | foliate-js, pinned as a git submodule                    |
 | `docs/PLAN.md`                                                 | Design, architecture and decisions                       |
 

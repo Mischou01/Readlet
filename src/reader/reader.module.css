@@ -22,7 +22,7 @@
 .toolbar {
   position: absolute;
   z-index: 10;
-  top: 14px;
+  top: calc(14px + var(--safe-top));
   left: 14px;
   right: 14px;
   max-width: 1120px;
@@ -44,7 +44,36 @@
 
 /* Slides away rather than fading: when frosted glass fades, its blur pops in at the end. */
 .toolbar[data-hidden] {
-  transform: translateY(calc(-100% - 64px));
+  transform: translateY(calc(-100% - 64px - var(--safe-top)));
+  pointer-events: none;
+}
+
+/* Phones: the reading tools, at the bottom of the screen. */
+.bottomTools {
+  position: absolute;
+  z-index: 10;
+  left: 50%;
+  bottom: calc(50px + var(--safe-bottom));
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--glass-edge);
+  background: var(--glass);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  box-shadow: var(--glass-shadow);
+  transform: translateX(-50%);
+  transition: transform 320ms var(--ease-out);
+}
+
+.bottomTools > button {
+  width: 52px;
+  height: 48px;
+}
+
+.bottomTools[data-hidden] {
+  transform: translate(-50%, calc(100% + 120px + var(--safe-bottom)));
   pointer-events: none;
 }
 
@@ -117,7 +146,7 @@
 .ribbon {
   position: absolute;
   z-index: 6;
-  top: 0;
+  top: var(--safe-top);
   right: 44px;
   width: 22px;
   height: 46px;
@@ -144,19 +173,7 @@
   z-index: 5;
   left: 0;
   right: 0;
-  bottom: 0;
-  pointer-events: none;
-  transition:
-    transform 320ms var(--ease-out),
-    opacity 320ms var(--ease-out);
-}
-
-.footer[data-hidden] {
-  transform: translateY(100%);
-  opacity: 0;
-}
-
-.footer[data-hidden] .seek {
+  bottom: var(--safe-bottom);
   pointer-events: none;
 }
 
@@ -687,73 +704,77 @@
   }
 }
 
-/* Phones: a slimmer toolbar with the back button as an icon, and selection bars on two rows. */
-@media (max-width: 600px) {
+/* -- Phones -----------------------------------------------------------------------------------
+   The page keeps clear of the status and navigation bars even while they're hidden, so hiding
+   them never reflows the text. */
+
+@media (max-width: 640px) {
+  .book {
+    top: var(--safe-top);
+    bottom: var(--safe-bottom);
+  }
+
   .toolbar {
-    top: 10px;
+    top: calc(8px + var(--safe-top));
     left: 10px;
     right: 10px;
     grid-template-columns: auto minmax(0, 1fr) auto;
     gap: 4px;
     height: 56px;
-    padding: 0 4px;
-  }
-
-  .back {
-    padding: 0 12px;
-  }
-
-  .backLabel {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-    white-space: nowrap;
+    padding: 0 6px;
   }
 
   .titleBlock {
     align-items: flex-start;
   }
 
-  .tools {
-    gap: 0;
-  }
-
-  .tools button {
-    width: 40px;
+  .ribbon {
+    right: 24px;
   }
 
   .footerText {
-    padding: 0 20px 14px;
+    padding: 0 20px 10px;
+    font-size: 12.5px;
   }
 
-  /* The divider breaks the line: colours on top, actions below. */
+  .chapterProgress > span + span {
+    font-size: 12px;
+  }
+
+  /* A taller target for the thumb, which only works while the toolbar shows. */
+  .seek input {
+    height: 32px;
+  }
+
+  .footer[data-chrome-hidden] .seek input {
+    pointer-events: none;
+  }
+
+  /* The selection and highlight bars sit at the bottom, clear of the text being selected. */
   .selectionBar {
     flex-wrap: wrap;
     justify-content: center;
-    max-width: calc(100vw - 24px);
+    row-gap: 2px;
+    padding: 8px;
     white-space: normal;
   }
 
   .barDivider {
-    flex-basis: calc(100% - 16px);
-    height: 1px;
-    margin: 4px 8px;
+    display: none;
   }
 
   .barButton {
-    flex: 1 1 0;
-    flex-direction: column;
-    justify-content: center;
-    gap: 4px;
-    min-width: 0;
-    height: auto;
-    min-height: 52px;
-    padding: 6px 4px;
-    border-radius: 14px;
-    font-size: 12px;
-    line-height: 1.2;
-    text-align: center;
+    padding: 0 10px;
+    font-size: 13.5px;
+  }
+
+  .notePreview {
+    max-width: none;
+    padding: 14px 16px 6px;
+    font-size: 15px;
+  }
+
+  .backToSpot {
+    bottom: calc(64px + var(--safe-bottom));
   }
 }
