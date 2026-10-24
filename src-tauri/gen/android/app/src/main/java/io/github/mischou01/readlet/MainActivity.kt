@@ -3,15 +3,45 @@ package io.github.mischou01.readlet
 import android.graphics.Rect
 import android.os.Bundle
 import android.view.ActionMode
+import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import androidx.activity.enableEdgeToEdge
 
 class MainActivity : TauriActivity() {
+  companion object {
+    /** The reader is open and turns pages with the volume keys (a setting); see ReadletPlugin. */
+    @Volatile
+    var volumeKeysTurnPages = false
+
+    /** Receives "next" or "previous" when a volume key turns the page. */
+    var onPageKey: ((String) -> Unit)? = null
+  }
+
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
+  }
+
+  /**
+   * While the reader is open, the volume keys can turn pages instead of changing the volume:
+   * down goes forward, up goes back. Holding a key turns one page, not a stream of them. Both the
+   * press and the release are consumed, or the system would still show its volume slider.
+   */
+  override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+    val direction = when (event.keyCode) {
+      KeyEvent.KEYCODE_VOLUME_DOWN -> "next"
+      KeyEvent.KEYCODE_VOLUME_UP -> "previous"
+      else -> null
+    }
+    if (direction != null && volumeKeysTurnPages) {
+      if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+        onPageKey?.invoke(direction)
+      }
+      return true
+    }
+    return super.dispatchKeyEvent(event)
   }
 
   /**

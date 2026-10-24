@@ -37,6 +37,8 @@ walkdir = "2"
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 notify = "8"
 notify-debouncer-full = "0.7"
+# Deleting a book moves it to the trash, where it can be restored. Android has no trash for files.
+trash = { version = "5.2", default-features = false, features = ["coinit_apartmentthreaded"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
 # Splitting SSML into sentences for Android's text-to-speech (src/tts/segments.rs).

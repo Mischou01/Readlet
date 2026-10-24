@@ -48,6 +48,67 @@
   pointer-events: none;
 }
 
+/* Zoom for page-based books: above the footer at the right while the toolbar shows, clear of
+   the toasts in the middle. */
+.zoomBar {
+  position: absolute;
+  z-index: 10;
+  right: 24px;
+  bottom: calc(52px + var(--safe-bottom));
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--glass-edge);
+  background: var(--glass);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  box-shadow: var(--glass-shadow);
+  transition: transform 320ms var(--ease-out);
+}
+
+.zoomBar[data-hidden] {
+  transform: translateY(calc(100% + 120px + var(--safe-bottom)));
+  pointer-events: none;
+}
+
+.zoomBar button:disabled {
+  opacity: 0.4;
+}
+
+.zoomLevel {
+  min-width: 92px;
+  height: 40px;
+  padding: 0 12px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.zoomLevel:hover {
+  background: var(--hover);
+}
+
+.zoomLock {
+  margin-left: 4px;
+}
+
+.zoomLock[aria-pressed='true'] {
+  background: var(--ink);
+  color: var(--fog);
+}
+
+.withSheet .zoomBar {
+  right: 436px;
+}
+
 /* Phones: the reading tools, at the bottom of the screen. */
 .bottomTools {
   position: absolute;
@@ -705,6 +766,10 @@
   .withSheet .footer {
     right: 0;
   }
+
+  .withSheet .zoomBar {
+    right: 24px;
+  }
 }
 
 /* -- Phones -----------------------------------------------------------------------------------
@@ -715,6 +780,18 @@
   .book {
     top: var(--safe-top);
     bottom: var(--safe-bottom);
+  }
+
+  /* Centred above the reading tools. */
+  .zoomBar {
+    right: auto;
+    left: 50%;
+    bottom: calc(122px + var(--safe-bottom));
+    transform: translateX(-50%);
+  }
+
+  .zoomBar[data-hidden] {
+    transform: translate(-50%, calc(100% + 190px + var(--safe-bottom)));
   }
 
   .toolbar {

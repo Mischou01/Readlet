@@ -15,6 +15,8 @@ import {
 } from './lib/platform'
 import { handleWindowShortcut } from './lib/window'
 import { addBookFiles } from './library/actions'
+import { BookDetailsSheet } from './library/BookDetailsSheet'
+import { DeleteBooksDialog } from './library/DeleteBooksDialog'
 import { indexPendingBooks } from './library/indexer'
 import { LibraryView } from './library/LibraryView'
 import { Onboarding } from './library/Onboarding'
@@ -92,6 +94,8 @@ function Shell({ libraryRoot }: { libraryRoot: string }) {
   const view = useApp((s) => s.view)
   const settingsOpen = useApp((s) => s.settingsOpen)
   const notice = useApp((s) => s.notice)
+  const details = useApp((s) => s.details)
+  const deleting = useApp((s) => s.deleting)
   const dropping = useDropToAdd()
 
   useEffect(() => {
@@ -165,7 +169,11 @@ function Shell({ libraryRoot }: { libraryRoot: string }) {
       <OpeningCoverLayer />
       <AnimatePresence>
         {settingsOpen && view.name !== 'reader' && <SettingsSheet />}
+        {details && view.name === 'library' && (
+          <BookDetailsSheet key={details} fingerprint={details} />
+        )}
       </AnimatePresence>
+      {deleting && <DeleteBooksDialog {...deleting} />}
       {notice && (
         <Dialog
           title={notice.title}

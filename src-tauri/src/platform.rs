@@ -1,5 +1,5 @@
 //! Commands for what differs between desktop and Android: file access, picking folders and
-//! books, the system bars and going to the background. Desktop does these through Tauri's own
+//! books, the system bars, the screen and volume keys while reading, and going to the background. Desktop does these through Tauri's own
 //! plugins (or doesn't need them), so most are Android-only and report `unsupported` elsewhere.
 
 use serde::{Deserialize, Serialize};
@@ -28,6 +28,15 @@ pub struct SystemBars {
     pub dark: bool,
     /// Hide the status and navigation bars (while reading); a swipe from the edge shows them.
     pub hidden: bool,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReaderControls {
+    /// Keep the screen from dimming and locking.
+    pub keep_screen_on: bool,
+    /// The volume keys turn pages instead of changing the volume.
+    pub volume_keys: bool,
 }
 
 /// Whether the app may read and write the books folder. On Android this is the "All files
@@ -72,6 +81,13 @@ pub async fn system_insets(app: AppHandle) -> Result<Insets> {
     imp::system_insets(app).await
 }
 
+/// Keeps the screen on and lets the volume keys turn pages while reading; pages turned by the
+/// keys arrive as `reader:page-key` events. Desktop has neither.
+#[tauri::command]
+pub async fn set_reader_controls(app: AppHandle, controls: ReaderControls) -> Result<()> {
+    imp::set_reader_controls(app, controls).await
+}
+
 /// Sends the app to the background, as the back gesture does on the first screen of other apps.
 #[tauri::command]
 pub async fn move_to_background(app: AppHandle) -> Result<()> {
@@ -82,7 +98,7 @@ pub async fn move_to_background(app: AppHandle) -> Result<()> {
 mod desktop {
     use tauri::AppHandle;
 
-    use super::{Insets, SystemBars};
+    use super::{Insets, ReaderControls, SystemBars};
     use crate::error::{Error, Result};
 
     pub async fn storage_access(_: AppHandle) -> Result<bool> {
@@ -109,6 +125,10 @@ mod desktop {
         Ok(Insets::default())
     }
 
+    pub async fn set_reader_controls(_: AppHandle, _: ReaderControls) -> Result<()> {
+        Ok(())
+    }
+
     pub async fn move_to_background(_: AppHandle) -> Result<()> {
         Err(Error::Unsupported("Moving to the background"))
     }
@@ -122,7 +142,7 @@ mod android {
     use serde::{Deserialize, Serialize};
     use tauri::{AppHandle, Manager};
 
-    use super::{Insets, SystemBars};
+    use super::{Insets, ReaderControls, SystemBars};
     use crate::android::Native;
     use crate::error::{Error, Result};
     use crate::state::AppState;
@@ -210,6 +230,12 @@ mod android {
 
     pub async fn system_insets(app: AppHandle) -> Result<Insets> {
         call(app, "insets", ()).await
+    }
+
+    pub async fn set_reader_controls(app: AppHandle, controls: ReaderControls) -> Result<()> {
+        call::<IgnoredAny, _>(app, "setReaderControls", controls)
+            .await
+            .map(|_| ())
     }
 
     pub async fn move_to_background(app: AppHandle) -> Result<()> {

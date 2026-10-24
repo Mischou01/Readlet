@@ -485,8 +485,8 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-left: calc(min(560px, 100vw - 32px) / -2);
-  width: min(560px, calc(100vw - 32px));
+  margin-left: calc(min(620px, 100vw - 32px) / -2);
+  width: min(620px, calc(100vw - 32px));
   padding: 6px 6px 6px 22px;
   border-radius: var(--radius-pill);
   border: 1px solid var(--glass-edge);
@@ -539,6 +539,19 @@
   background: var(--hover);
 }
 
+.selectionDelete {
+  flex-shrink: 0;
+  color: #b0384f;
+}
+
+:global([data-theme='dark']) .selectionDelete {
+  color: #f0a3b2;
+}
+
+.selectionDelete:disabled {
+  opacity: 0.45;
+}
+
 /* Room to scroll the last books out from under the selection bar. */
 .grid[data-selecting],
 .list[data-selecting] {
@@ -581,6 +594,56 @@
   align-items: center;
   gap: 6px;
   margin-top: 9px;
+  font-size: 12.5px;
+  color: var(--haze);
+}
+
+/* Sorted by series: a heading per series, its books in reading order below. */
+.seriesGroup {
+  margin-top: 40px;
+}
+
+.seriesGroup:first-of-type {
+  margin-top: 28px;
+}
+
+.seriesHeading {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-size: 17px;
+  font-weight: 650;
+  scroll-margin-top: 24px;
+}
+
+.seriesHeading span {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--haze);
+}
+
+/* A short series sits at the start rather than spread across the row. */
+.seriesGroup .grid {
+  justify-content: start;
+  margin-top: 18px;
+}
+
+.seriesGroup .list {
+  margin-top: 8px;
+}
+
+.seriesGroup:not(:last-of-type) .grid[data-selecting],
+.seriesGroup:not(:last-of-type) .list[data-selecting] {
+  padding-bottom: 0;
+}
+
+.rowSeries {
+  display: block;
+  margin-top: 1px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   font-size: 12.5px;
   color: var(--haze);
 }
@@ -799,6 +862,12 @@
     padding: 0 14px;
   }
 
+  /* "About this book" stays a round icon beside the two wide buttons. */
+  .heroActions > button.heroInfo {
+    flex: 0 0 auto;
+    padding: 0;
+  }
+
   .aside {
     min-width: 0;
     flex-basis: 100%;
@@ -877,13 +946,53 @@
     padding: 8px 4px;
   }
 
+  /* Two rows on a phone: what's selected (and select all, done) above, the actions below. */
   .selectionBar {
     bottom: calc(var(--dock-space) + 6px);
-    padding-left: 18px;
+    flex-wrap: wrap;
+    row-gap: 4px;
+    padding: 6px 6px 8px 18px;
+    border-radius: 28px;
+  }
+
+  .selectionCount {
+    order: 1;
+    flex: 1 1 0;
+  }
+
+  .selectionQuiet {
+    order: 2;
+  }
+
+  .selectionClose {
+    order: 3;
   }
 
   .selectionAction {
+    order: 4;
+    flex: 1 1 auto;
+    justify-content: center;
     padding: 0 12px;
+  }
+
+  .selectionDelete {
+    order: 5;
+  }
+
+  /* The actions start their own row. */
+  .selectionAction:first-of-type {
+    margin-left: -12px;
+  }
+
+  .selectionBar::after {
+    content: '';
+    order: 3;
+    flex-basis: 100%;
+  }
+
+  .grid[data-selecting],
+  .list[data-selecting] {
+    padding-bottom: 140px;
   }
 
   .search {

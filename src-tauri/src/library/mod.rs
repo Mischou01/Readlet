@@ -1,7 +1,9 @@
-//! The library folder: finding books in it, watching it (on desktop) and adding books to it.
+//! The library folder: finding books in it, watching it (on desktop), and adding books to it and
+//! deleting them.
 //!
-//! Readlet never renames, moves or deletes the reader's files. In the library folder it only
-//! writes inside `.readlet/` and the books copied in by "Add books" (docs/PLAN.md §8).
+//! Readlet never renames or moves the reader's files, and deletes one only when the reader asks
+//! (moving it to the trash where there is one). In the library folder it only writes inside
+//! `.readlet/` and the books copied in by "Add books" (docs/PLAN.md §8).
 
 pub mod fingerprint;
 pub mod formats;
@@ -91,6 +93,22 @@ impl Library {
         Ok(added)
     }
 
+    /// Deletes a book file the reader asked to delete: on the desktop it goes to the trash, where
+    /// it can be restored; Android has no trash for files, so there it's gone. Its reading data in
+    /// `.readlet/` stays, so the book picks up where it was if it comes back. A file that's already
+    /// gone counts as deleted.
+    pub fn delete_book(&self, rel_path: &str) -> Result<()> {
+        let path = self.resolve(rel_path)?;
+        // Only ever book files: never a folder, nor anything the index shouldn't have held.
+        match fs::symlink_metadata(&path) {
+            Ok(meta) if meta.is_file() && BookFormat::from_path(&path).is_some() => {}
+            Ok(_) => return Err(Error::invalid("that isn't a book file")),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(e) => return Err(e.into()),
+        }
+        remove_book_file(&path)
+    }
+
     /// Picks `name.ext`, `name (2).ext`, … — or `None` if an identical copy is already there.
     fn free_destination(&self, source: &Path) -> Result<Option<PathBuf>> {
         let file_name = source
@@ -114,6 +132,16 @@ impl Library {
         }
         Err(Error::invalid("too many files with that name"))
     }
+}
+
+#[cfg(desktop)]
+fn remove_book_file(path: &Path) -> Result<()> {
+    trash::delete(path).map_err(|e| Error::Trash(e.to_string()))
+}
+
+#[cfg(mobile)]
+fn remove_book_file(path: &Path) -> Result<()> {
+    Ok(fs::remove_file(path)?)
 }
 
 /// Splits `book.fb2.zip` into (`book`, `.fb2.zip`) and `Emma.epub` into (`Emma`, `.epub`).
@@ -196,6 +224,20 @@ mod tests {
         let txt = downloads.path().join("notes.txt");
         fs::write(&txt, b"x").unwrap();
         assert!(library.add_books(&[txt]).unwrap().is_empty());
+    }
+
+    #[test]
+    fn deletes_only_book_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let library = Library::open(dir.path(), DEVICE, "Test").unwrap();
+        fs::create_dir(dir.path().join("Austen.epub")).unwrap();
+        fs::write(dir.path().join("notes.txt"), b"x").unwrap();
+        assert!(library.delete_book("Austen.epub").is_err());
+        assert!(library.delete_book("notes.txt").is_err());
+        assert!(library.delete_book("../outside.epub").is_err());
+        assert!(dir.path().join("notes.txt").exists());
+        // Already gone: nothing to do.
+        assert!(library.delete_book("Missing.epub").is_ok());
     }
 
     #[test]

@@ -225,6 +225,47 @@ pub async fn add_books(app: AppHandle, paths: Vec<String>) -> Result<Vec<String>
     .await
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteReport {
+    /// The books that were deleted (or whose files were already gone).
+    deleted: Vec<String>,
+    /// Why the others couldn't be, one message each.
+    errors: Vec<String>,
+}
+
+/// Deletes books the reader chose to delete: to the trash on the desktop, for good on Android.
+/// Their reading data stays in `.readlet/`. The index forgets them at once, so the next scan has
+/// nothing to report.
+#[tauri::command]
+pub async fn delete_books(app: AppHandle, fingerprints: Vec<String>) -> Result<DeleteReport> {
+    for fp in &fingerprints {
+        check_fingerprint(fp)?;
+    }
+    blocking(&app, move |state| {
+        let library = state.library()?;
+        let mut deleted = Vec::new();
+        let mut errors = Vec::new();
+        for fp in fingerprints {
+            let Some((rel_path, _)) = state.index().rel_path(&fp)? else {
+                continue;
+            };
+            match library.delete_book(&rel_path) {
+                Ok(()) => deleted.push(fp),
+                Err(e) => {
+                    log::warn!("couldn't delete book {fp}: {e}");
+                    errors.push(e.to_string());
+                }
+            }
+        }
+        if !deleted.is_empty() {
+            state.forget_books(&deleted)?;
+        }
+        Ok(DeleteReport { deleted, errors })
+    })
+    .await
+}
+
 #[tauri::command]
 pub async fn reveal_book(app: AppHandle, fingerprint: String) -> Result<()> {
     check_fingerprint(&fingerprint)?;

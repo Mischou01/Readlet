@@ -225,12 +225,7 @@ impl AppState {
         if !plan.upserts.is_empty() || !plan.removed.is_empty() {
             self.index()
                 .apply_scan(&plan.upserts, &plan.removed, fsutil::now_ms())?;
-            for fingerprint in &plan.removed {
-                let _ = std::fs::remove_file(crate::covers::cover_path(
-                    &self.paths.covers,
-                    fingerprint,
-                ));
-            }
+            self.remove_covers(&plan.removed);
         }
         log::info!(
             "scan: {} books ({} added, {} updated, {} removed)",
@@ -240,6 +235,22 @@ impl AppState {
             plan.report.removed
         );
         Ok(plan.report)
+    }
+
+    /// Drops books whose files were deleted from the index (it's only a cache; their reading data
+    /// stays in the folder).
+    pub fn forget_books(&self, fingerprints: &[String]) -> Result<()> {
+        self.index()
+            .apply_scan(&[], fingerprints, fsutil::now_ms())?;
+        self.remove_covers(fingerprints);
+        Ok(())
+    }
+
+    fn remove_covers(&self, fingerprints: &[String]) {
+        for fingerprint in fingerprints {
+            let _ =
+                std::fs::remove_file(crate::covers::cover_path(&self.paths.covers, fingerprint));
+        }
     }
 
     /// Resolves an indexed book to its file on disk.

@@ -33,6 +33,9 @@ pub enum Error {
     #[cfg(desktop)]
     #[error(transparent)]
     Watch(#[from] notify::Error),
+    #[cfg(desktop)]
+    #[error("Couldn't move it to the trash: {0}")]
+    Trash(String),
     #[error(transparent)]
     Tauri(#[from] tauri::Error),
 }
@@ -58,6 +61,8 @@ impl Error {
             Self::Sql(_) => "index",
             #[cfg(desktop)]
             Self::Watch(_) => "watch",
+            #[cfg(desktop)]
+            Self::Trash(_) => "trash",
             Self::Tauri(_) => "internal",
         }
     }

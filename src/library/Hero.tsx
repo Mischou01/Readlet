@@ -1,10 +1,11 @@
-import { BookOpen, Clock, Play, Volume2 } from 'lucide-react'
+import { BookOpen, Clock, Info, Play, Volume2 } from 'lucide-react'
 import { useRef } from 'react'
-import { Button } from '../components/Button'
+import { Button, IconButton } from '../components/Button'
 import { Cover } from '../components/Cover'
 import { ProgressBar } from '../components/Progress'
 import { formatAuthors, formatPercent, formatTimeLeft } from '../lib/format'
 import { usePhoneLayout } from '../lib/platform'
+import { useApp } from '../state/app'
 import { readPosition } from '../state/positions'
 import { usePreferences } from '../state/preferences'
 import { paceFor } from '../stats/pace'
@@ -84,6 +85,14 @@ export function Hero({ book }: { book: LibraryBook }) {
           >
             Read aloud
           </Button>
+          <IconButton
+            glass
+            className={styles.heroInfo}
+            label="About this book"
+            onClick={() => useApp.getState().showDetails(book.fingerprint)}
+          >
+            <Info size={19} strokeWidth={1.8} aria-hidden="true" />
+          </IconButton>
         </div>
       </div>
     </div>

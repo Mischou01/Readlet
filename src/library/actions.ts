@@ -4,8 +4,9 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { api, toAppError } from '../lib/ipc'
 import { isAndroid, pickFolder } from '../lib/platform'
 import { pluralize } from '../lib/format'
+import { bookTitle } from '../lib/text'
 import { useApp, type OpeningCover } from '../state/app'
-import { expectAddedFiles, useLibrary } from '../state/library'
+import { expectAddedFiles, expectDeleted, useLibrary } from '../state/library'
 import { showError, useToasts } from '../state/toasts'
 import { resetIndexer } from './indexer'
 
@@ -136,4 +137,45 @@ export function openBook(
   }
   app.setOpening(openingCover(book.fingerprint, from))
   app.navigate({ name: 'reader', fingerprint: book.fingerprint, ...view })
+}
+
+/**
+ * Deletes books once the reader has confirmed: to the trash on the desktop, for good on Android.
+ * Their reading data stays, so a book added again picks up where it was.
+ */
+export async function deleteBooks(fingerprints: string[]): Promise<boolean> {
+  const library = useLibrary.getState()
+  const only = fingerprints.length === 1 ? library.books[fingerprints[0] ?? ''] : undefined
+  let report: { deleted: string[]; errors: string[] }
+  expectDeleted(fingerprints)
+  try {
+    report = await api.deleteBooks(fingerprints)
+  } catch (e) {
+    expectDeleted(fingerprints, false)
+    showError(
+      `Couldn’t delete ${only ? `“${bookTitle(only)}”` : 'the books'}: ${toAppError(e).message}`,
+    )
+    return false
+  }
+  const { deleted, errors } = report
+  expectDeleted(
+    fingerprints.filter((fp) => !deleted.includes(fp)),
+    false,
+  )
+  library.removeBooks(deleted)
+  const app = useApp.getState()
+  if (app.details && deleted.includes(app.details)) app.showDetails(null)
+  if (errors.length) {
+    showError(
+      deleted.length
+        ? `Deleted ${pluralize(deleted.length, 'book')}; ${errors.length.toLocaleString()} couldn’t be: ${errors[0]}`
+        : `Couldn’t delete ${only ? `“${bookTitle(only)}”` : 'the books'}: ${errors[0]}`,
+    )
+    return deleted.length > 0
+  }
+  const what = only ? `“${bookTitle(only)}”` : pluralize(deleted.length, 'book')
+  useToasts
+    .getState()
+    .show({ message: isAndroid ? `Deleted ${what}` : `Moved ${what} to the trash` })
+  return true
 }

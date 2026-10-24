@@ -6,7 +6,12 @@ import { isAndroid } from '../lib/platform'
 import { pickLibraryFolder } from '../library/actions'
 import { useApp } from '../state/app'
 import { useLibrary } from '../state/library'
-import { usePreferences, type Appearance } from '../state/preferences'
+import {
+  SCREEN_ON_MINUTES,
+  usePreferences,
+  type Appearance,
+  type ScreenOnMinutes,
+} from '../state/preferences'
 import styles from './settings.module.css'
 
 const APPEARANCES: { value: Appearance; label: string }[] = [
@@ -14,6 +19,11 @@ const APPEARANCES: { value: Appearance; label: string }[] = [
   { value: 'light', label: 'Light' },
   { value: 'dark', label: 'Dark' },
 ]
+
+const SCREEN_ON_OPTIONS = SCREEN_ON_MINUTES.map((m) => ({
+  value: String(m),
+  label: m === 0 ? 'System' : `${m} min`,
+}))
 
 export function SettingsSheet() {
   const info = useApp((s) => s.info)
@@ -70,6 +80,32 @@ export function SettingsSheet() {
             </Button>
           </div>
         </section>
+
+        {isAndroid && (
+          <section>
+            <FieldLabel>Reading</FieldLabel>
+            <p className={styles.subhead}>Keep the screen on</p>
+            <Segmented
+              label="Keep the screen on while reading"
+              value={String(prefs.reader.screenOnMinutes)}
+              options={SCREEN_ON_OPTIONS}
+              onChange={(v) =>
+                update({ reader: { screenOnMinutes: Number(v) as ScreenOnMinutes } })
+              }
+            />
+            <p className={styles.hint}>
+              {prefs.reader.screenOnMinutes === 0
+                ? 'The screen turns off after the phone’s usual timeout.'
+                : `The screen stays on until ${prefs.reader.screenOnMinutes} minutes after your last page turn or tap.`}
+            </p>
+            <Switch
+              label="Turn pages with the volume keys"
+              hint="Volume down goes forward, volume up goes back. While reading aloud, they change the volume."
+              checked={prefs.reader.volumeKeys}
+              onChange={(volumeKeys) => update({ reader: { volumeKeys } })}
+            />
+          </section>
+        )}
 
         <section>
           <FieldLabel>Dictionary</FieldLabel>
