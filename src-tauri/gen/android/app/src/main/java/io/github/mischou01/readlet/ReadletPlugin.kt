@@ -72,8 +72,8 @@ class ReaderControlsArgs {
 /**
  * What only Android can do for Readlet, called from Rust (src-tauri/src/android): read-aloud
  * through the system's text-to-speech, the media notification, "All files access", the system
- * pickers, the system bars, and keeping the screen on and the volume keys while reading. Everything it reports goes through one channel to Rust, which
- * forwards it to the UI.
+ * pickers, the system bars, and the screen and volume keys while reading. Everything it reports
+ * goes through one channel to Rust, which forwards it to the UI.
  */
 @TauriPlugin
 class ReadletPlugin(private val activity: Activity) : Plugin(activity) {
