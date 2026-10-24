@@ -5,7 +5,7 @@
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
   gap: 16px;
-  padding: 14px 20px 14px 32px;
+  padding: calc(14px + var(--safe-top)) 20px 14px 32px;
 }
 
 .brand {
@@ -74,38 +74,30 @@
   }
 }
 
-/* Phones: no brand, the sections on the left. A search field opened in the actions takes the row. */
-@media (max-width: 600px) {
+/* Phones: the sections become a glass dock at the bottom, within reach of a thumb. */
+@media (max-width: 640px) {
   .header {
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 8px;
-    padding: 12px;
+    display: flex;
+    justify-content: space-between;
+    padding: calc(10px + var(--safe-top)) 14px 6px 18px;
   }
 
-  .brand {
-    display: none;
+  .actions {
+    flex: 1;
+    gap: 6px;
   }
 
   .nav {
-    justify-self: start;
+    position: fixed;
+    z-index: 30;
+    left: 50%;
+    bottom: calc(14px + var(--safe-bottom));
+    transform: translateX(-50%);
+    box-shadow: var(--glass-shadow);
   }
 
   .navItem {
-    height: 38px;
-    padding: 0 12px;
-    font-size: 14px;
-  }
-
-  .header:has([role='search']) .nav {
-    display: none;
-  }
-
-  .header:has([role='search']) .actions {
-    grid-column: 1 / -1;
-  }
-
-  .actions [role='search'] {
-    flex: 1;
-    width: auto;
+    padding: 0 18px;
+    height: 46px;
   }
 }

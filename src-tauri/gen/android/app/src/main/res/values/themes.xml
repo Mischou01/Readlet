@@ -1,0 +1,6 @@
+<resources>
+    <style name="Theme.readlet" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- The page shows through the WebView, so this is what appears before it paints. -->
+        <item name="android:windowBackground">@color/fog</item>
+    </style>
+</resources>

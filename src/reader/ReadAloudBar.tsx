@@ -18,6 +18,14 @@ function sleepLabel(sleep: SleepTimer): string {
   return SLEEP_LABELS[String(sleep)] ?? 'No sleep timer'
 }
 
+/** For the narrow bar on phones. */
+const SHORT_SLEEP_LABELS: Record<string, string> = {
+  off: 'Timer',
+  '15': '15 min',
+  '30': '30 min',
+  chapter: 'Chapter',
+}
+
 interface ReadAloudBarProps {
   readAloud: ReadAloud
   entry: BookEntry
@@ -45,7 +53,8 @@ export function ReadAloudBar({ readAloud, entry, title, chapter, minutesLeft }: 
     },
     ...(matching.length ? matching : voices).slice(0, 40).map((v) => ({
       id: v.name,
-      label: v.language ? `${v.name} (${v.language})` : v.name,
+      // Android's network voices send the text to the engine's servers.
+      label: `${v.language ? `${v.name} (${v.language})` : v.name}${v.variant === 'network' ? ', online' : ''}`,
       checked: v.name === voice,
       onSelect: () => readAloud.setVoice(v.name),
     })),
@@ -77,62 +86,69 @@ export function ReadAloudBar({ readAloud, entry, title, chapter, minutesLeft }: 
         <span className={styles.chapter}>{chapter ?? title}</span>
         <span className={styles.left}>{left != null ? formatTimeLeft(left, 'chapter') : ' '}</span>
       </div>
-      <button
-        type="button"
-        className={styles.icon}
-        aria-label="Previous sentence"
-        onClick={readAloud.previous}
-      >
-        <SkipBack size={20} strokeWidth={1.8} aria-hidden="true" />
-      </button>
-      <button
-        type="button"
-        className={styles.play}
-        aria-label={playing ? 'Pause' : 'Play'}
-        onClick={readAloud.toggle}
-      >
-        {playing ? (
-          <Pause size={20} fill="currentColor" strokeWidth={0} aria-hidden="true" />
-        ) : (
-          <Play size={20} fill="currentColor" strokeWidth={0} aria-hidden="true" />
-        )}
-      </button>
-      <button
-        type="button"
-        className={styles.icon}
-        aria-label="Next sentence"
-        onClick={readAloud.next}
-      >
-        <SkipForward size={20} strokeWidth={1.8} aria-hidden="true" />
-      </button>
+      <div className={styles.transport}>
+        <button
+          type="button"
+          className={styles.icon}
+          aria-label="Previous sentence"
+          onClick={readAloud.previous}
+        >
+          <SkipBack size={20} strokeWidth={1.8} aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          className={styles.play}
+          aria-label={playing ? 'Pause' : 'Play'}
+          onClick={readAloud.toggle}
+        >
+          {playing ? (
+            <Pause size={20} fill="currentColor" strokeWidth={0} aria-hidden="true" />
+          ) : (
+            <Play size={20} fill="currentColor" strokeWidth={0} aria-hidden="true" />
+          )}
+        </button>
+        <button
+          type="button"
+          className={styles.icon}
+          aria-label="Next sentence"
+          onClick={readAloud.next}
+        >
+          <SkipForward size={20} strokeWidth={1.8} aria-hidden="true" />
+        </button>
+      </div>
       <span className={styles.divider} aria-hidden="true" />
+      <div className={styles.options}>
+        <button
+          type="button"
+          className={styles.speed}
+          aria-label={`Speed ${formatSpeed(speed)}, change speed`}
+          onClick={readAloud.cycleSpeed}
+        >
+          {formatSpeed(speed)}
+        </button>
+        <MenuButton label="Voice" items={voiceItems} className={styles.text} align="end">
+          <span className={styles.avatar} aria-hidden="true">
+            {(voice ?? 'D').charAt(0).toUpperCase()}
+          </span>
+          <span className={styles.voiceName}>{voice ?? 'Default voice'}</span>
+          <ChevronDown size={15} strokeWidth={1.8} aria-hidden="true" />
+        </MenuButton>
+        <button
+          type="button"
+          className={styles.text}
+          aria-label={`Sleep timer: ${sleepLabel(readAloud.sleep)}`}
+          onClick={readAloud.cycleSleep}
+        >
+          <Moon size={17} strokeWidth={1.8} aria-hidden="true" />
+          <span className={styles.long}>{sleepLabel(readAloud.sleep)}</span>
+          <span className={styles.short} aria-hidden="true">
+            {SHORT_SLEEP_LABELS[String(readAloud.sleep)]}
+          </span>
+        </button>
+      </div>
       <button
         type="button"
-        className={styles.speed}
-        aria-label={`Speed ${formatSpeed(speed)}, change speed`}
-        onClick={readAloud.cycleSpeed}
-      >
-        {formatSpeed(speed)}
-      </button>
-      <MenuButton label="Voice" items={voiceItems} className={styles.text} align="end">
-        <span className={styles.avatar} aria-hidden="true">
-          {(voice ?? 'D').charAt(0).toUpperCase()}
-        </span>
-        <span className={styles.voiceName}>{voice ?? 'Default voice'}</span>
-        <ChevronDown size={15} strokeWidth={1.8} aria-hidden="true" />
-      </MenuButton>
-      <button
-        type="button"
-        className={styles.text}
-        aria-label={`Sleep timer: ${sleepLabel(readAloud.sleep)}`}
-        onClick={readAloud.cycleSleep}
-      >
-        <Moon size={17} strokeWidth={1.8} aria-hidden="true" />
-        {sleepLabel(readAloud.sleep)}
-      </button>
-      <button
-        type="button"
-        className={styles.icon}
+        className={`${styles.icon} ${styles.close}`}
         aria-label="Stop reading aloud"
         onClick={readAloud.stop}
       >

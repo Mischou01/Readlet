@@ -2,8 +2,8 @@
 
 import { open } from '@tauri-apps/plugin-dialog'
 import { api, toAppError } from '../lib/ipc'
+import { isAndroid, pickFolder } from '../lib/platform'
 import { pluralize } from '../lib/format'
-import { chooseFolder } from '../lib/platform'
 import { useApp, type OpeningCover } from '../state/app'
 import { expectAddedFiles, useLibrary } from '../state/library'
 import { showError, useToasts } from '../state/toasts'
@@ -25,10 +25,19 @@ export const BOOK_EXTENSIONS = [
 /** Copies books into the library folder; the watcher indexes them. */
 export async function addBookFiles(paths: string[]) {
   if (paths.length === 0) return
+  await addBooks(() => api.addBooks(paths), paths.length)
+}
+
+/**
+ * Runs `add` and reports how it went; `offered` is how many files were picked, if known. `add`
+ * returns `null` when nothing was picked.
+ */
+async function addBooks(add: () => Promise<string[] | null>, offered?: number) {
   try {
-    const added = await api.addBooks(paths)
+    const added = await add()
+    if (!added) return
     expectAddedFiles(added)
-    const skipped = paths.length - added.length
+    const skipped = offered === undefined ? 0 : offered - added.length
     const message =
       added.length === 0
         ? 'Those books are already in your library'
@@ -40,6 +49,8 @@ export async function addBookFiles(paths: string[]) {
 }
 
 export async function pickAndAddBooks() {
+  // Android's picker hands over documents rather than paths; the core copies them in.
+  if (isAndroid) return addBooks(api.importBooks)
   let selected: string | string[] | null
   try {
     selected = await open({
@@ -56,9 +67,15 @@ export async function pickAndAddBooks() {
 
 /** Asks for a library folder and switches to it. Returns false if the reader cancelled. */
 export async function pickLibraryFolder(): Promise<boolean> {
+  let dir: string | null
   try {
-    const dir = await chooseFolder('Choose your books folder')
-    if (dir === null) return false
+    dir = await pickFolder('Choose your books folder')
+  } catch (e) {
+    showError(toAppError(e).message)
+    return false
+  }
+  if (!dir) return false
+  try {
     resetIndexer()
     useLibrary.getState().reset()
     const info = await api.chooseLibrary(dir)

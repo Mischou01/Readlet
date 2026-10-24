@@ -10,7 +10,8 @@ interface CoverProps {
   entry: BookEntry
   title: string
   authors: string[]
-  width: number
+  /** In px, or `fill` to take the width of its container (phone grids). */
+  width: number | 'fill'
   large?: boolean
   className?: string
   style?: CSSProperties
@@ -26,7 +27,13 @@ export function Cover({ entry, title, authors, width, large, className, style }:
   return (
     <span
       className={[styles.cover, large ? styles.large : '', className ?? ''].join(' ')}
-      style={{ width, height: Math.round(width * 1.5), background, ...style }}
+      style={{
+        ...(width === 'fill'
+          ? { width: '100%', aspectRatio: '2 / 3' }
+          : { width, height: Math.round(width * 1.5) }),
+        background,
+        ...style,
+      }}
       data-cover=""
       aria-hidden="true"
     >

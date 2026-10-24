@@ -79,6 +79,7 @@ pub fn is_valid_device_id(id: &str) -> bool {
 
 /// A human-readable name for this machine, written next to its data so people can tell the
 /// device folders apart.
+#[cfg(not(target_os = "android"))]
 fn device_name() -> String {
     let from_env = std::env::var("COMPUTERNAME").or_else(|_| std::env::var("HOSTNAME"));
     let from_file = || fs::read_to_string("/etc/hostname").map(|s| s.trim().to_owned());
@@ -87,6 +88,24 @@ fn device_name() -> String {
         .ok()
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "This device".to_owned())
+}
+
+/// Phones have no host name worth showing; their model ("Pixel 8") is what people recognise.
+#[cfg(target_os = "android")]
+fn device_name() -> String {
+    fn property(name: &std::ffi::CStr) -> Option<String> {
+        let mut value = [0 as libc::c_char; libc::PROP_VALUE_MAX as usize];
+        // SAFETY: `name` is NUL-terminated and `value` has the PROP_VALUE_MAX bytes the call
+        // may write, including the terminating NUL.
+        let len = unsafe { libc::__system_property_get(name.as_ptr(), value.as_mut_ptr()) };
+        if len <= 0 {
+            return None;
+        }
+        // SAFETY: on success the value is NUL-terminated within the buffer.
+        let value = unsafe { std::ffi::CStr::from_ptr(value.as_ptr()) };
+        Some(value.to_string_lossy().trim().to_owned()).filter(|s| !s.is_empty())
+    }
+    property(c"ro.product.model").unwrap_or_else(|| "Android phone".to_owned())
 }
 
 #[cfg(test)]

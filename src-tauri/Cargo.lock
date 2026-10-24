@@ -2994,9 +2994,11 @@ version = "0.1.0"
 dependencies = [
  "blake3",
  "image",
+ "libc",
  "log",
  "notify",
  "notify-debouncer-full",
+ "quick-xml",
  "rusqlite",
  "serde",
  "serde_json",
@@ -3005,7 +3007,6 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-log",
  "tauri-plugin-opener",
- "tauri-plugin-readlet-android",
  "tempfile",
  "thiserror 2.0.21",
  "uuid",
@@ -3962,15 +3963,6 @@ dependencies = [
  "url",
  "windows",
  "zbus",
-]
-
-[[package]]
-name = "tauri-plugin-readlet-android"
-version = "0.1.0"
-dependencies = [
- "serde",
- "tauri",
- "tauri-plugin",
 ]
 
 [[package]]

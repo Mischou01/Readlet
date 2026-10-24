@@ -1,67 +1,200 @@
-// What differs on phones and tablets: there's no window to manage, the dialog plugin can't pick
-// folders (it can only pick `content://` files, which the Rust core can't read by path), and on
-// Android Readlet has the whole screen, camera cutout included (src-tauri/plugins/android).
+// What differs when Readlet runs on Android rather than the desktop: the system's insets around
+// the page, the on-screen keyboard, the back gesture, the system bars and the app lifecycle.
+// Layout itself follows the screen size (PHONE_QUERY), not the platform.
 
+import { onBackButtonPress } from '@tauri-apps/api/app'
 import { open } from '@tauri-apps/plugin-dialog'
-import { useApp } from '../state/app'
-import { api } from './ipc'
-import type { ScreenInsets } from './types'
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
+import { api, events, subscribeAll } from './ipc'
 
-const MOBILE = new Set(['android', 'ios'])
+export const isAndroid = typeof navigator !== 'undefined' && /Android/.test(navigator.userAgent)
 
-export const isMobile = () => MOBILE.has(useApp.getState().info?.platform ?? '')
+/** Phone-sized screens: navigation moves to the bottom and sheets rise from the bottom. */
+export const PHONE_QUERY = '(max-width: 640px)'
+/** Touch screens, where nothing can be hovered. */
+export const TOUCH_QUERY = '(hover: none) and (pointer: coarse)'
 
-export const useIsMobile = () => useApp((s) => MOBILE.has(s.info?.platform ?? ''))
+function mediaQuery(query: string) {
+  const list = typeof matchMedia === 'function' ? matchMedia(query) : null
+  return {
+    subscribe: (onChange: () => void) => {
+      list?.addEventListener('change', onChange)
+      return () => list?.removeEventListener('change', onChange)
+    },
+    matches: () => list?.matches ?? false,
+  }
+}
 
-/** Asks for a folder. Null if the reader cancelled. */
-export async function chooseFolder(title: string): Promise<string | null> {
-  if (isMobile()) return api.pickFolder()
+const phone = mediaQuery(PHONE_QUERY)
+const touch = mediaQuery(TOUCH_QUERY)
+
+export function usePhoneLayout(): boolean {
+  return useSyncExternalStore(phone.subscribe, phone.matches, () => false)
+}
+
+export function isTouchScreen(): boolean {
+  return touch.matches()
+}
+
+export function useTouchScreen(): boolean {
+  return useSyncExternalStore(touch.subscribe, touch.matches, () => false)
+}
+
+/**
+ * Sets up the page for the system around it: `data-platform` on `<html>` for CSS, the system
+ * bars' insets as `--native-inset-*` (WebView 136 and later also provide them as
+ * `safe-area-inset-*`; tokens.css takes whichever is larger) and the on-screen keyboard's height
+ * as `--keyboard-inset`. Returns a cleanup function.
+ */
+export function initPlatform(): () => void {
+  const root = document.documentElement
+  root.dataset.platform = isAndroid ? 'android' : 'desktop'
+
+  // Newer WebViews shrink only the visual viewport for the keyboard; dialogs and sheets lift by
+  // the difference so their fields stay above it.
+  const viewport = window.visualViewport
+  const onViewport = () => {
+    if (!viewport) return
+    const covered = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)
+    root.style.setProperty('--keyboard-inset', `${Math.round(covered)}px`)
+  }
+  viewport?.addEventListener('resize', onViewport)
+
+  const unsubscribe = isAndroid ? watchInsets() : () => {}
+  return () => {
+    viewport?.removeEventListener('resize', onViewport)
+    unsubscribe()
+  }
+}
+
+function watchInsets(): () => void {
+  const apply = (insets: { top: number; right: number; bottom: number; left: number }) => {
+    const style = document.documentElement.style
+    for (const side of ['top', 'right', 'bottom', 'left'] as const) {
+      style.setProperty(`--native-inset-${side}`, `${insets[side]}px`)
+    }
+  }
+  api.systemInsets().then(apply, (e) => console.warn('reading the system insets failed', e))
+  return subscribeAll([events.onInsets(apply)])
+}
+
+const backEvents = new WeakSet<Event>()
+
+/** Whether a keydown is Android's back gesture rather than a real Escape. */
+export function isBackGesture(event: Event): boolean {
+  return backEvents.has(event)
+}
+
+/**
+ * Android's back gesture acts like Escape, which already closes whatever is on top (a menu, a
+ * dialog, a sheet, a selection). When nothing takes it, `onUnhandled` runs: going back a view, or
+ * leaving the app.
+ */
+export function useBackGesture(onUnhandled: () => void) {
+  useEffect(() => {
+    if (!isAndroid) return
+    let disposed = false
+    let unregister: (() => void) | undefined
+    onBackButtonPress(() => {
+      const event = new KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        cancelable: true,
+      })
+      backEvents.add(event)
+      ;(document.activeElement ?? document.body).dispatchEvent(event)
+      if (!event.defaultPrevented) onUnhandled()
+    })
+      .then((listener) => {
+        if (disposed) void listener.unregister()
+        else unregister = () => void listener.unregister()
+      })
+      .catch((e) => console.warn('the back gesture is unavailable', e))
+    return () => {
+      disposed = true
+      unregister?.()
+    }
+  }, [onUnhandled])
+}
+
+/** Sends the app to the background, as the back gesture does on other apps' first screen. */
+export function leaveApp() {
+  api.moveToBackground().catch((e) => console.warn('moving to the background failed', e))
+}
+
+/**
+ * Matches the status and navigation bars to the screen behind them, and hides them while
+ * `immersive` (reading). Does nothing on the desktop.
+ */
+export function useSystemBars(dark: boolean, immersive = false) {
+  useEffect(() => {
+    if (!isAndroid) return
+    api
+      .setSystemBars({ dark, hidden: immersive })
+      .catch((e) => console.warn('styling the system bars failed', e))
+  }, [dark, immersive])
+}
+
+/**
+ * Runs `onHide` when the app goes to the background. A phone may stop the app at any time after
+ * that, so this is the moment to save. (The desktop calls it when the window is minimised.)
+ */
+export function useOnHide(onHide: () => void) {
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') onHide()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    const unsubscribe = isAndroid ? subscribeAll([events.onSuspended(onHide)]) : () => {}
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      unsubscribe()
+    }
+  }, [onHide])
+}
+
+/** Asks for a folder: the dialog plugin on the desktop, the system picker on Android. */
+export async function pickFolder(title: string): Promise<string | null> {
+  if (isAndroid) return api.pickFolder()
   const dir = await open({ directory: true, title })
   return typeof dir === 'string' ? dir : null
 }
 
-declare global {
-  interface Window {
-    /** Called by the Android plugin when the screen's insets change. */
-    __readletSetInsets?: (insets: ScreenInsets) => void
-  }
-}
-
-const SIDES = ['top', 'right', 'bottom', 'left'] as const
-
-/** Sets the `--system-inset-*` properties that `--safe-*` in global.css are made from. */
-function applyInsets(insets: ScreenInsets) {
-  const style = document.documentElement.style
-  for (const side of SIDES) style.setProperty(`--system-inset-${side}`, `${insets[side]}px`)
-}
-
-/** Fields that need Android's own text menu, for cut and paste. */
-const TEXT_FIELD =
-  'textarea, [contenteditable="true"], input:not([type]), input:is([type="text"], [type="search"], [type="email"], [type="url"], [type="password"], [type="number"])'
+export type StorageAccess = 'checking' | 'granted' | 'denied'
 
 /**
- * Android only: keeps the UI clear of the camera cutout, and lets Android show its own text menu
- * only while a text field has focus (book pages get Readlet's selection bar instead). Returns a
- * function that undoes it.
+ * Whether Readlet may read the books folder: Android's "All files access", checked again whenever
+ * the app comes back (the reader may have changed it in Settings). Always granted on the desktop.
+ * `request` opens the setting.
  */
-export function fitAndroidScreen(): () => void {
-  window.__readletSetInsets = applyInsets
-  api.screenInsets().then(applyInsets, (e) => console.warn('reading the screen insets failed', e))
-
-  let nativeMenu = false
-  const update = () => {
-    const wanted = !!document.activeElement?.matches(TEXT_FIELD)
-    if (wanted === nativeMenu) return
-    nativeMenu = wanted
-    api.setNativeTextMenu(wanted).catch((e) => console.warn('switching the text menu failed', e))
-  }
-  // Focus has moved on by the time a timer runs; during `focusout` it's still on its way.
-  const updateSoon = () => setTimeout(update, 0)
-  document.addEventListener('focusin', update)
-  document.addEventListener('focusout', updateSoon)
-  return () => {
-    delete window.__readletSetInsets
-    document.removeEventListener('focusin', update)
-    document.removeEventListener('focusout', updateSoon)
-  }
+export function useStorageAccess(): { access: StorageAccess; request: () => Promise<void> } {
+  const [access, setAccess] = useState<StorageAccess>(isAndroid ? 'checking' : 'granted')
+  const check = useCallback(() => {
+    api.storageAccess().then(
+      (granted) => setAccess(granted ? 'granted' : 'denied'),
+      (e) => {
+        // Don't lock the reader out over a failed check; reading the folder will fail visibly.
+        console.warn('checking file access failed', e)
+        setAccess('granted')
+      },
+    )
+  }, [])
+  useEffect(() => {
+    if (!isAndroid) return
+    check()
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') check()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [check])
+  const request = useCallback(async () => {
+    try {
+      setAccess((await api.requestStorageAccess()) ? 'granted' : 'denied')
+    } catch (e) {
+      console.warn('asking for file access failed', e)
+      check()
+    }
+  }, [check])
+  return { access, request }
 }

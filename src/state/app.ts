@@ -36,6 +36,8 @@ interface AppState {
   settingsOpen: boolean
   notice: Notice | null
   opening: OpeningCover | null
+  /** The reader wants the whole screen: the phone's system bars are hidden. */
+  immersive: boolean
   init: () => Promise<void>
   setInfo: (info: AppInfo) => void
   navigate: (view: View) => void
@@ -43,6 +45,7 @@ interface AppState {
   setNotice: (notice: Notice | null) => void
   /** Starts the "open book" transition; the reader ends it once the book is on screen. */
   setOpening: (opening: OpeningCover | null) => void
+  setImmersive: (immersive: boolean) => void
 }
 
 export const useApp = create<AppState>((set) => ({
@@ -53,6 +56,7 @@ export const useApp = create<AppState>((set) => ({
   settingsOpen: false,
   notice: null,
   opening: null,
+  immersive: false,
   init: async () => {
     try {
       const info = await api.getAppInfo()
@@ -72,4 +76,5 @@ export const useApp = create<AppState>((set) => ({
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
   setNotice: (notice) => set({ notice }),
   setOpening: (opening) => set({ opening }),
+  setImmersive: (immersive) => set({ immersive }),
 }))

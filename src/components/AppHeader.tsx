@@ -1,7 +1,5 @@
 import type { ReactNode } from 'react'
-import { useIsMobile } from '../lib/platform'
 import { useApp, type Section } from '../state/app'
-import controls from './controls.module.css'
 import styles from './AppHeader.module.css'
 import { Logo } from './Logo'
 import { WindowControls } from './WindowControls'
@@ -15,7 +13,6 @@ const SECTIONS: { id: Section; label: string }[] = [
 /** The window's title bar: brand, the section switcher and per-view actions. Draggable. */
 export function AppHeader({ section, actions }: { section: Section; actions?: ReactNode }) {
   const navigate = useApp((s) => s.navigate)
-  const mobile = useIsMobile()
   return (
     <header className={styles.header} data-tauri-drag-region>
       <div className={styles.brand} data-tauri-drag-region>
@@ -37,7 +34,6 @@ export function AppHeader({ section, actions }: { section: Section; actions?: Re
       </nav>
       <div className={styles.actions} data-tauri-drag-region>
         {actions}
-        {!mobile && <span className={controls.divider} aria-hidden="true" />}
         <WindowControls />
       </div>
     </header>

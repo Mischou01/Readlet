@@ -1,4 +1,5 @@
-//! Application state and the background jobs that keep the index in step with the folder.
+//! Application state and the background jobs that keep the index in step with the folder: a
+//! watcher on desktop, and a catch-up whenever the app returns to the foreground on mobile.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -9,7 +10,9 @@ use tauri::{AppHandle, Emitter, Manager, Runtime};
 use crate::error::{Error, Result};
 use crate::fsutil;
 use crate::index::Index;
-use crate::library::{Library, scan, watch};
+#[cfg(desktop)]
+use crate::library::watch;
+use crate::library::{Library, scan};
 use crate::settings::Settings;
 
 /// Events sent to the UI.
@@ -20,6 +23,9 @@ pub mod events {
     pub const LIBRARY_SCAN_FAILED: &str = "library:scan-failed";
     /// Another device's reading data arrived; payload: `StoreChanges`.
     pub const STORE_CHANGED: &str = "store:changed";
+    /// The app went to the background (mobile only).
+    #[cfg(mobile)]
+    pub const APP_SUSPENDED: &str = "app:suspended";
 }
 
 pub struct AppPaths {
@@ -51,6 +57,9 @@ pub struct AppState {
     library: RwLock<Option<Arc<Library>>>,
     scan_requested: AtomicBool,
     scan_running: AtomicBool,
+    /// Other devices' reading data as of the last check (see `catch_up`).
+    #[cfg(mobile)]
+    store_snapshot: Mutex<crate::store::Snapshot>,
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -79,6 +88,8 @@ impl AppState {
             library: RwLock::new(None),
             scan_requested: AtomicBool::new(false),
             scan_running: AtomicBool::new(false),
+            #[cfg(mobile)]
+            store_snapshot: Mutex::new(Default::default()),
         })
     }
 
@@ -112,9 +123,25 @@ impl AppState {
         let library = Arc::new(Library::open(root, &device_id, &device_name)?);
         self.index().set_root(&library.root.to_string_lossy())?;
 
+        #[cfg(desktop)]
+        self.watch(app, &library);
+        #[cfg(mobile)]
+        {
+            *lock(&self.store_snapshot) = library.store.snapshot();
+        }
+
+        *self.library.write().unwrap_or_else(|e| e.into_inner()) = Some(library);
+        self.request_scan(app);
+        Ok(())
+    }
+
+    /// Follows the folder: book files that change trigger a rescan, and reading data from other
+    /// devices is reloaded as it arrives.
+    #[cfg(desktop)]
+    fn watch<R: Runtime>(&self, app: &AppHandle<R>, library: &Arc<Library>) {
         let handle = app.clone();
         let root = library.root.clone();
-        let watched = Arc::downgrade(&library);
+        let watched = Arc::downgrade(library);
         match watch::start(&library.root, move |paths| {
             let Some(library) = watched.upgrade() else {
                 return;
@@ -133,10 +160,26 @@ impl AppState {
             // start and on request still works.
             Err(e) => log::warn!("can't watch the library folder: {e}"),
         }
+    }
 
-        *self.library.write().unwrap_or_else(|e| e.into_inner()) = Some(library);
+    /// Catches up with the folder after the app was in the background, where nothing watches it
+    /// (mobile): rescans the books and reloads reading data that other devices synced meanwhile.
+    #[cfg(mobile)]
+    pub fn catch_up<R: Runtime>(&self, app: &AppHandle<R>) {
+        let Ok(library) = self.library() else {
+            return;
+        };
         self.request_scan(app);
-        Ok(())
+        let app = app.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            let state = app.state::<AppState>();
+            let after = library.store.snapshot();
+            let before = std::mem::replace(&mut *lock(&state.store_snapshot), after.clone());
+            let changes = library.store.changes_between(&before, &after);
+            if !changes.is_empty() {
+                let _ = app.emit(events::STORE_CHANGED, &changes);
+            }
+        });
     }
 
     /// Schedules a scan. Requests that arrive while one is running are coalesced into a single

@@ -37,6 +37,7 @@ function Swatches({
 
 interface SelectionBarProps {
   anchor: DOMRect
+  docked: boolean
   canDefine: boolean
   onHighlight: (color: HighlightColor) => void
   onNote: () => void
@@ -56,6 +57,7 @@ export function SelectionBar(props: SelectionBarProps) {
       role="toolbar"
       onClose={props.onClose}
       persistent
+      docked={props.docked}
     >
       <div className={styles.selectionBar}>
         <Swatches onPick={props.onHighlight} />
@@ -99,6 +101,9 @@ export function SelectionBar(props: SelectionBarProps) {
 
 interface HighlightBarProps {
   anchor: DOMRect
+  docked: boolean
+  /** Show the note too: on a touch screen there's no hovering to read it. */
+  showNote: boolean
   annotation: Annotation
   onColor: (color: HighlightColor) => void
   onNote: () => void
@@ -107,10 +112,23 @@ interface HighlightBarProps {
   onClose: () => void
 }
 
-/** Shown when an existing highlight is clicked. */
+/** Shown when an existing highlight is clicked (or tapped, which also shows its note). */
 export function HighlightBar(props: HighlightBarProps) {
+  const note = props.showNote ? props.annotation.note : undefined
   return (
-    <Popover anchor={props.anchor} label="Highlight" role="toolbar" onClose={props.onClose}>
+    <Popover
+      anchor={props.anchor}
+      label="Highlight"
+      role="toolbar"
+      docked={props.docked}
+      onClose={props.onClose}
+    >
+      {note && (
+        <div className={styles.notePreview} data-selectable>
+          <PencilLine size={14} strokeWidth={1.8} aria-hidden="true" />
+          <p>{note}</p>
+        </div>
+      )}
       <div className={styles.selectionBar}>
         <Swatches current={props.annotation.color} onPick={props.onColor} />
         <span className={styles.barDivider} aria-hidden="true" />

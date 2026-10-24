@@ -163,14 +163,6 @@ export interface AppInfo {
   platform: string
 }
 
-/** Distances from the screen's edges, in CSS pixels. */
-export interface ScreenInsets {
-  top: number
-  right: number
-  bottom: number
-  left: number
-}
-
 /** Errors from commands arrive as `{ kind, message }`. */
 export interface AppError {
   kind: string

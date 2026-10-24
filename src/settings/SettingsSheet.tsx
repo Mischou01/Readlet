@@ -2,6 +2,7 @@ import { FolderOpen, RefreshCw } from 'lucide-react'
 import { Button } from '../components/Button'
 import { FieldLabel, Segmented, Switch } from '../components/Fields'
 import { Sheet } from '../components/Sheet'
+import { isAndroid } from '../lib/platform'
 import { pickLibraryFolder } from '../library/actions'
 import { useApp } from '../state/app'
 import { useLibrary } from '../state/library'
@@ -46,7 +47,10 @@ export function SettingsSheet() {
             {info?.libraryRoot}
           </p>
           <p className={styles.hint}>
-            {bookCount.toLocaleString()} books. Readlet watches this folder for changes.
+            {bookCount.toLocaleString()} books.{' '}
+            {isAndroid
+              ? 'Readlet looks for changes whenever you open it.'
+              : 'Readlet watches this folder for changes.'}
           </p>
           <div className={styles.row}>
             <Button
@@ -71,7 +75,7 @@ export function SettingsSheet() {
           <FieldLabel>Dictionary</FieldLabel>
           <Switch
             label="Look up words on Wiktionary"
-            hint="Sends the word you look up to Wikimedia. Nothing else leaves this computer."
+            hint={`Sends the word you look up to Wikimedia. Nothing else leaves this ${isAndroid ? 'phone' : 'computer'}.`}
             checked={prefs.onlineDictionary === true}
             onChange={(onlineDictionary) => update({ onlineDictionary })}
           />

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The status-bar icon while reading aloud: the pebbles in one colour. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="30"
+    android:viewportHeight="30"
+    android:tint="#FFFFFFFF">
+    <group android:rotation="-16" android:pivotX="12" android:pivotY="16">
+        <path android:fillColor="#FFFFFFFF"
+            android:pathData="M4,16a8,10.5 0,1 0,16 0a8,10.5 0,1 0,-16 0z" />
+    </group>
+    <group android:rotation="18" android:pivotX="19" android:pivotY="14">
+        <path android:fillColor="#FFFFFFFF" android:fillAlpha="0.6"
+            android:pathData="M11.5,14a7.5,10 0,1 0,15 0a7.5,10 0,1 0,-15 0z" />
+    </group>
+</vector>

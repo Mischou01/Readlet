@@ -1,7 +1,7 @@
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { Copy, Minimize2, Minus, Square, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { useIsMobile } from '../lib/platform'
+import { isAndroid } from '../lib/platform'
 import { toggleFullscreen } from '../lib/window'
 import { IconButton } from './Button'
 import controls from './controls.module.css'
@@ -35,20 +35,20 @@ const run = (action: () => Promise<void>) => () =>
   void action().catch((e) => console.warn('window action failed', e))
 
 /**
- * Minimise, maximise (or leave full screen) and close. Closing flushes pending writes through the
- * close-requested handlers first.
+ * Minimise, maximise (or leave full screen) and close, with a divider before them. Closing flushes
+ * pending writes through the close-requested handlers first. Phones have no windows to control.
  */
-export function WindowControls() {
-  // Phones and tablets have no window to minimise, maximise or close.
-  return useIsMobile() ? null : <DesktopWindowControls />
+export function WindowControls({ divider = true }: { divider?: boolean }) {
+  return isAndroid ? null : <DesktopWindowControls divider={divider} />
 }
 
-function DesktopWindowControls() {
+function DesktopWindowControls({ divider }: { divider: boolean }) {
   const state = useWindowState()
   const window = getCurrentWindow()
   return (
     // Like the system's own title bar buttons, these don't take focus when clicked.
     <div className={controls.windowControls} onMouseDown={(e) => e.preventDefault()}>
+      {divider && <span className={controls.divider} aria-hidden="true" />}
       <IconButton
         label="Minimize"
         className={controls.windowButton}

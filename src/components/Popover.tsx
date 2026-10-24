@@ -23,6 +23,8 @@ interface PopoverProps {
   style?: CSSProperties
   /** Keep it open when clicking outside (e.g. while the reader adjusts a selection). */
   persistent?: boolean
+  /** Sit at the bottom of the screen instead of next to the anchor (phones). */
+  docked?: boolean
 }
 
 const GAP = 10
@@ -39,6 +41,7 @@ export function Popover({
   className,
   style,
   persistent,
+  docked,
 }: PopoverProps) {
   const ref = useRef<HTMLDivElement>(null)
   const [position, setPosition] = useState<{ left: number; top: number } | null>(null)
@@ -47,7 +50,7 @@ export function Popover({
 
   useLayoutEffect(() => {
     const el = ref.current
-    if (!el) return
+    if (!el || docked) return
     const { width, height } = el.getBoundingClientRect()
     const above = anchor.top - height - GAP
     const below = anchor.bottom + GAP
@@ -65,7 +68,7 @@ export function Popover({
       innerWidth - width - MARGIN,
     )
     setPosition({ left, top })
-  }, [anchor, placement])
+  }, [anchor, placement, docked])
 
   useEffect(() => {
     if (persistent) return
@@ -81,9 +84,11 @@ export function Popover({
       ref={ref}
       role={role}
       aria-label={label}
-      className={`${styles.popover} ${className ?? ''}`}
-      style={{ left: position?.left ?? -9999, top: position?.top ?? -9999, ...style }}
-      initial={{ opacity: 0, y: placement === 'above' ? 4 : -4 }}
+      className={`${styles.popover} ${docked ? styles.docked : ''} ${className ?? ''}`}
+      style={
+        docked ? style : { left: position?.left ?? -9999, top: position?.top ?? -9999, ...style }
+      }
+      initial={{ opacity: 0, y: docked ? 12 : placement === 'above' ? 4 : -4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.14 }}
     >
