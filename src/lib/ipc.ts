@@ -58,6 +58,9 @@ export const api = {
     invoke<BookEntry>('set_book_cover', bytes, { headers: { 'x-fingerprint': fingerprint } }),
   addBooks: (paths: string[]) => invoke<string[]>('add_books', { paths }),
   revealBook: (fingerprint: string) => invoke<void>('reveal_book', { fingerprint }),
+  /** To the trash on the desktop, for good on Android; reading data is kept. */
+  deleteBooks: (fingerprints: string[]) =>
+    invoke<{ deleted: string[]; errors: string[] }>('delete_books', { fingerprints }),
 
   listRecords: () => invoke<BookRecord[]>('list_records'),
   getRecord: (fingerprint: string) => invoke<BookRecord>('get_record', { fingerprint }),
@@ -106,6 +109,9 @@ export const api = {
   setSystemBars: (bars: { dark: boolean; hidden: boolean }) =>
     invoke<void>('set_system_bars', { bars }),
   systemInsets: () => invoke<Insets>('system_insets'),
+  /** While reading: keeps the screen on, and lets the volume keys turn pages (`onPageKey`). */
+  setReaderControls: (controls: { keepScreenOn: boolean; volumeKeys: boolean }) =>
+    invoke<void>('set_reader_controls', { controls }),
   moveToBackground: () => invoke<void>('move_to_background'),
 }
 
@@ -154,6 +160,9 @@ export const events = {
     listen<RemoteAction>('tts:remote', (e) => handler(e.payload)),
   onInsets: (handler: (insets: Insets) => void): Promise<UnlistenFn> =>
     listen<Insets>('system:insets', (e) => handler(e.payload)),
+  /** A volume key turned the page (Android, when that setting is on). */
+  onPageKey: (handler: (direction: 'next' | 'previous') => void): Promise<UnlistenFn> =>
+    listen<'next' | 'previous'>('reader:page-key', (e) => handler(e.payload)),
   /** The app went to the background (mobile). */
   onSuspended: (handler: () => void): Promise<UnlistenFn> =>
     listen('app:suspended', () => handler()),

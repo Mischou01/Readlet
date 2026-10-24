@@ -9,9 +9,13 @@ export type ReadingThemeId = 'system' | 'paper' | 'sepia' | 'dusk' | 'night'
 export type ReadingFont = 'literata' | 'newsreader' | 'atkinson' | 'publisher'
 export type LineSpacing = 'compact' | 'comfortable' | 'airy'
 export type Margins = 'narrow' | 'medium' | 'wide'
-export type LibrarySort = 'recent' | 'title' | 'author' | 'added'
+export type LibrarySort = 'recent' | 'title' | 'author' | 'series' | 'added'
 export type LibraryTab = 'all' | 'reading' | 'toRead' | 'finished'
 export type LibraryLayout = 'grid' | 'list'
+/** How long the screen stays on after the last page turn or tap, in minutes; 0 leaves it to
+ * the system's own timeout. */
+export type ScreenOnMinutes = 0 | 5 | 10 | 30
+export const SCREEN_ON_MINUTES: readonly ScreenOnMinutes[] = [0, 5, 10, 30]
 
 export interface ReaderPreferences {
   theme: ReadingThemeId
@@ -25,6 +29,10 @@ export interface ReaderPreferences {
   /** Two pages side by side when the window is wide enough. */
   spread: boolean
   animatePages: boolean
+  /** Android: keep the screen on while reading, for this long after the last page turn or tap. */
+  screenOnMinutes: ScreenOnMinutes
+  /** Android: the volume keys turn pages. */
+  volumeKeys: boolean
 }
 
 export interface Preferences {
@@ -58,6 +66,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
     scrolled: false,
     spread: true,
     animatePages: true,
+    screenOnMinutes: 10,
+    volumeKeys: false,
   },
   readAloud: { rate: 1, voice: null },
   onlineDictionary: null,
@@ -96,7 +106,7 @@ export function normalizePreferences(raw: unknown): Preferences {
     reduceTransparency: bool(r.reduceTransparency, d.reduceTransparency),
     library: {
       layout: oneOf(lib.layout, ['grid', 'list'], d.library.layout),
-      sort: oneOf(lib.sort, ['recent', 'title', 'author', 'added'], d.library.sort),
+      sort: oneOf(lib.sort, ['recent', 'title', 'author', 'series', 'added'], d.library.sort),
       tab: oneOf(lib.tab, ['all', 'reading', 'toRead', 'finished'], d.library.tab),
       shelf: typeof lib.shelf === 'string' ? lib.shelf : null,
     },
@@ -110,6 +120,10 @@ export function normalizePreferences(raw: unknown): Preferences {
       scrolled: bool(reader.scrolled, d.reader.scrolled),
       spread: bool(reader.spread, d.reader.spread),
       animatePages: bool(reader.animatePages, d.reader.animatePages),
+      screenOnMinutes: SCREEN_ON_MINUTES.includes(reader.screenOnMinutes as ScreenOnMinutes)
+        ? (reader.screenOnMinutes as ScreenOnMinutes)
+        : d.reader.screenOnMinutes,
+      volumeKeys: bool(reader.volumeKeys, d.reader.volumeKeys),
     },
     readAloud: {
       rate: num(aloud.rate, 0.5, 2, d.readAloud.rate),

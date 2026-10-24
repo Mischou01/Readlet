@@ -16,6 +16,11 @@
   overflow-wrap: anywhere;
 }
 
+.subhead {
+  font-size: 14.5px;
+  font-weight: 550;
+}
+
 .hint {
   font-size: 13.5px;
   color: var(--haze);

@@ -29,6 +29,7 @@ import {
   type SectionPages,
   type SelectionInfo,
   type TapZone,
+  type ZoomInfo,
 } from './BookView'
 import { ContentsSheet } from './ContentsSheet'
 import { bookmarksOnPage } from './bookmarks'
@@ -59,6 +60,9 @@ import { TextSettingsSheet } from './TextSettingsSheet'
 import { readerChromeVars, resolveReadingTheme } from './themes'
 import { useBookPace } from './useBookPace'
 import { useReadAloud } from './useReadAloud'
+import { useReaderControls } from './useReaderControls'
+import { ZoomBar } from './ZoomBar'
+import { normalizeZoom, stepZoom, type PageZoom } from './zoom'
 import { chapterLabel } from './toc'
 import { useReadingSession } from './useReadingSession'
 
@@ -216,6 +220,28 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
     setInitialLocation(target ?? record.progress?.cfi ?? null)
   const [fixedLayout, setFixedLayout] = useState(false)
 
+  // Page-based books zoom; zoomed in, the view can be locked against sliding sideways.
+  const [zoom, setZoom] = useState<PageZoom>('fit-page')
+  const [zoomInfo, setZoomInfo] = useState<ZoomInfo>({ factor: 1, overflowing: false })
+  const [viewLockRequested, setViewLocked] = useState(false)
+  const zoomed = zoom !== 'fit-page' && zoomInfo.overflowing
+  const viewLocked = viewLockRequested && zoomed
+  const requestZoom = useCallback((next: PageZoom) => {
+    const zoom = normalizeZoom(next)
+    setZoom(zoom)
+    // Back to the whole page, the lock has done its job.
+    if (zoom === 'fit-page') setViewLocked(false)
+  }, [])
+  const onZoomInfo = useCallback(
+    (info: ZoomInfo) =>
+      setZoomInfo((current) =>
+        Math.abs(current.factor - info.factor) < 0.005 && current.overflowing === info.overflowing
+          ? current
+          : info,
+      ),
+    [],
+  )
+
   const session = useReadingSession(fingerprint, record?.progress?.fraction ?? 0, readingAloud)
   const { bytesPerMinute, relocated: paceRelocated } = useBookPace(fingerprint, readingAloud)
 
@@ -341,11 +367,30 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
   useEffect(() => useApp.getState().setImmersive(immersive), [immersive])
   useEffect(() => () => useApp.getState().setImmersive(false), [])
 
+  // -- Screen and volume keys (Android) --------------------------------------------------------
+
+  const { poke: keepScreenOn } = useReaderControls({
+    screenOnMinutes: readerPrefs.screenOnMinutes,
+    // While reading aloud, the volume keys set the volume.
+    volumeKeys: readerPrefs.volumeKeys && !readingAloud,
+    onPageKey: (direction) => {
+      // Not behind a dialog that's being typed in.
+      if (noteFor || namingBookmark) return
+      keepScreenOn()
+      if (direction === 'next') handle.current?.next()
+      else handle.current?.prev()
+    },
+  })
+  const onActivity = useCallback(() => {
+    session.activity()
+    keepScreenOn()
+  }, [session, keepScreenOn])
+
   const lastPointer = useRef({ x: -1, y: -1 })
   const onPointerMove = (e: React.PointerEvent) => {
     if (e.clientX === lastPointer.current.x && e.clientY === lastPointer.current.y) return
     lastPointer.current = { x: e.clientX, y: e.clientY }
-    session.activity()
+    onActivity()
     showChrome()
   }
 
@@ -632,6 +677,13 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
       setSheet('search')
       return
     }
+    // Ctrl + and Ctrl − zoom page-based books; Ctrl 0 fits the page again.
+    if (mod && fixedLayout && ['=', '+', '-', '0'].includes(e.key)) {
+      e.preventDefault()
+      if (e.key === '0') requestZoom('fit-page')
+      else requestZoom(stepZoom(zoomInfo.factor, e.key === '-' ? -1 : 1))
+      return
+    }
     if (mod || e.altKey) return
     switch (e.key) {
       case 'ArrowRight':
@@ -796,10 +848,14 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
             onExternalLink={(href) =>
               void openUrl(href).catch((e) => showError(toAppError(e).message))
             }
-            onActivity={session.activity}
+            onActivity={onActivity}
             onPointerMove={showChrome}
             onTap={onTap}
             onKeyDown={(e) => onKey.current(e)}
+            zoom={zoom}
+            viewLocked={viewLocked}
+            onZoomInfo={onZoomInfo}
+            onZoomRequest={requestZoom}
           />
         )}
       </div>
@@ -852,6 +908,19 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
           onSheet={(s) => setSheet((current) => (current === s ? null : s))}
           onToggleBookmark={() => void toggleBookmark()}
           onReadAloud={() => startReadAloud()}
+          onHover={setHoveringChrome}
+        />
+      )}
+
+      {fixedLayout && ready && !readingAloud && (
+        <ZoomBar
+          zoom={zoom}
+          factor={zoomInfo.factor}
+          zoomed={zoomed}
+          locked={viewLocked}
+          hidden={toolbarHidden || (phone && overlayOpen)}
+          onZoom={requestZoom}
+          onLock={setViewLocked}
           onHover={setHoveringChrome}
         />
       )}

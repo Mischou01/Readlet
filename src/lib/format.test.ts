@@ -1,6 +1,17 @@
+// @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
-import { dayKey, formatAgo, formatDay, formatMinutes, formatTimeLeft, pluralize } from './format'
-import { guessFromFileName, matchesQuery, titleSortKey } from './text'
+import {
+  dayKey,
+  formatAgo,
+  formatDay,
+  formatIdentifier,
+  formatMinutes,
+  formatPublished,
+  formatSeries,
+  formatTimeLeft,
+  pluralize,
+} from './format'
+import { guessFromFileName, htmlToParagraphs, matchesQuery, titleSortKey } from './text'
 
 const now = new Date(2026, 9, 22, 15).getTime()
 
@@ -22,6 +33,35 @@ describe('format', () => {
     expect(dayKey(new Date(2026, 0, 5, 23, 59).getTime())).toBe('2026-01-05')
   })
 
+  it('formats series positions', () => {
+    expect(formatSeries('The Expanse', 2)).toBe('Book 2 in The Expanse')
+    expect(formatSeries('The Expanse', 2.5)).toBe('Book 2.5 in The Expanse')
+    expect(formatSeries('The Expanse', null)).toBe('The Expanse')
+    expect(formatSeries('The Expanse', 0)).toBe('The Expanse')
+  })
+
+  it('formats publication dates, falling back to the year', () => {
+    expect(formatPublished('1871')).toBe('1871')
+    expect(formatPublished('2003-01-01T00:00:00+00:00')).toBe('2003')
+    expect(formatPublished('2003-05')).toBe('2003')
+    expect(formatPublished('2003-05-14')).toBe(
+      new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'long', year: 'numeric' }).format(
+        new Date(2003, 4, 14),
+      ),
+    )
+    expect(formatPublished('Spring, 1920')).toBe('Spring, 1920')
+  })
+
+  it('shows identifiers readers care about', () => {
+    expect(formatIdentifier('urn:isbn:9780141439518')).toBe('ISBN 9780141439518')
+    expect(formatIdentifier('978-0-14-143951-8')).toBe('ISBN 978-0-14-143951-8')
+    expect(formatIdentifier('urn:uuid:7c1e0a3e-1111-4c4c-9a9a-123456789abc')).toBeNull()
+    expect(formatIdentifier('3c1e0a3e-1111-4c4c-9a9a-123456789abc')).toBeNull()
+    expect(formatIdentifier('https://standardebooks.org/ebooks/jane-austen/emma')).toBe(
+      'https://standardebooks.org/ebooks/jane-austen/emma',
+    )
+  })
+
   it('pluralizes', () => {
     expect(pluralize(1, 'book')).toBe('1 book')
     expect(pluralize(2, 'book')).toBe('2 books')
@@ -30,6 +70,20 @@ describe('format', () => {
 })
 
 describe('text', () => {
+  it('splits descriptions into paragraphs', () => {
+    expect(htmlToParagraphs('<p>One <i>two</i>.</p><p>Three.</p>')).toEqual(['One two.', 'Three.'])
+    expect(htmlToParagraphs('First line<br>second<br/><br>third')).toEqual([
+      'First line',
+      'second',
+      'third',
+    ])
+    expect(htmlToParagraphs('Plain text\nwrapped.\n\nNext paragraph.')).toEqual([
+      'Plain text wrapped.',
+      'Next paragraph.',
+    ])
+    expect(htmlToParagraphs('   ')).toEqual([])
+  })
+
   it('guesses author and title from file names', () => {
     expect(guessFromFileName('Fiction/Ursula K. Le Guin - The Dispossessed.epub')).toEqual({
       author: 'Ursula K. Le Guin',

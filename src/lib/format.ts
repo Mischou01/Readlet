@@ -78,6 +78,45 @@ export function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+/** "Book 2 in The Expanse", or just the series when its position isn't known. */
+export function formatSeries(series: string, index: number | null): string {
+  if (index == null || !Number.isFinite(index) || index <= 0) return series
+  return `Book ${index.toLocaleString(LOCALE, { maximumFractionDigits: 2 })} in ${series}`
+}
+
+/**
+ * A publication date as books record it ("1871", "2003-05-14", "2003-01-01T00:00:00+00:00"):
+ * the day when there is a real one, otherwise the year. Publishers who only know the year often
+ * put 1 January; that's shown as the year too. Anything unrecognised is shown as it is.
+ */
+export function formatPublished(value: string): string {
+  const match = /^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?/.exec(value.trim())
+  if (!match) return value.trim()
+  const [, year, month, day] = match
+  if (!month || !day || (month === '01' && day === '01')) return year ?? value
+  return dayMonthYear.format(new Date(Number(year), Number(month) - 1, Number(day)))
+}
+
+/** A book identifier worth showing ("ISBN 9780141439518"); `null` for internal ones (UUIDs). */
+export function formatIdentifier(identifier: string): string | null {
+  const id = identifier.trim().replace(/^urn:/i, '')
+  const isbn = /^isbn:?\s*(.+)$/i.exec(id)
+  if (isbn?.[1]) return `ISBN ${isbn[1].trim()}`
+  if (/^[\d-]{10,17}[\dX]?$/i.test(id) && id.replace(/-/g, '').length >= 10) return `ISBN ${id}`
+  if (/^uuid:|^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(id) || /^calibre:/i.test(id)) return null
+  return id || null
+}
+
+/** A language code ("en", "de-AT") as its name in the reader's language ("English"). */
+export function formatLanguage(code: string): string {
+  try {
+    const names = new Intl.DisplayNames(LOCALE, { type: 'language' })
+    return names.of(code.trim()) ?? code
+  } catch {
+    return code
+  }
+}
+
 export function pluralize(count: number, one: string, many = `${one}s`): string {
   return `${count.toLocaleString()} ${count === 1 ? one : many}`
 }

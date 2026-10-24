@@ -1,4 +1,4 @@
-import { ChevronDown, LibraryBig, X } from 'lucide-react'
+import { ChevronDown, LibraryBig, Trash2, X } from 'lucide-react'
 import { motion } from 'motion/react'
 import { IconButton } from '../components/Button'
 import { MenuButton, type MenuEntry } from '../components/Menu'
@@ -11,12 +11,13 @@ interface SelectionBarProps {
   shelfItems: MenuEntry[]
   statusItems: MenuEntry[]
   onSelectAll: () => void
+  onDelete: () => void
   onDone: () => void
 }
 
 /** Floats at the bottom of the library while books are being selected. */
 export function SelectionBar(props: SelectionBarProps) {
-  const { count, total, shelfItems, statusItems, onSelectAll, onDone } = props
+  const { count, total, shelfItems, statusItems, onSelectAll, onDelete, onDone } = props
   return (
     <motion.div
       role="toolbar"
@@ -50,12 +51,20 @@ export function SelectionBar(props: SelectionBarProps) {
         Mark as
         <ChevronDown size={16} strokeWidth={1.8} aria-hidden="true" />
       </MenuButton>
+      <IconButton
+        label={count === 1 ? 'Delete the selected book' : 'Delete the selected books'}
+        className={styles.selectionDelete}
+        disabled={count === 0}
+        onClick={onDelete}
+      >
+        <Trash2 size={17} strokeWidth={1.8} aria-hidden="true" />
+      </IconButton>
       {count < total && (
         <button type="button" className={styles.selectionQuiet} onClick={onSelectAll}>
           Select all
         </button>
       )}
-      <IconButton label="Done selecting" onClick={onDone}>
+      <IconButton label="Done selecting" className={styles.selectionClose} onClick={onDone}>
         <X size={18} strokeWidth={2} aria-hidden="true" />
       </IconButton>
     </motion.div>

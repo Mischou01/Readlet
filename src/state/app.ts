@@ -28,6 +28,12 @@ export interface Notice {
   message: string
 }
 
+export interface PendingDelete {
+  fingerprints: string[]
+  /** Runs once they're deleted (ends a selection, say). */
+  onDeleted?: () => void
+}
+
 interface AppState {
   info: AppInfo | null
   status: 'loading' | 'ready' | 'error'
@@ -35,6 +41,10 @@ interface AppState {
   view: View
   settingsOpen: boolean
   notice: Notice | null
+  /** The book whose details sheet is open. */
+  details: string | null
+  /** Books waiting for the reader to confirm deleting them. */
+  deleting: PendingDelete | null
   opening: OpeningCover | null
   /** The reader wants the whole screen: the phone's system bars are hidden. */
   immersive: boolean
@@ -43,6 +53,9 @@ interface AppState {
   navigate: (view: View) => void
   setSettingsOpen: (open: boolean) => void
   setNotice: (notice: Notice | null) => void
+  showDetails: (fingerprint: string | null) => void
+  /** Asks before deleting books (`DeleteBooksDialog`); `null` closes the question. */
+  confirmDelete: (pending: PendingDelete | null) => void
   /** Starts the "open book" transition; the reader ends it once the book is on screen. */
   setOpening: (opening: OpeningCover | null) => void
   setImmersive: (immersive: boolean) => void
@@ -55,6 +68,8 @@ export const useApp = create<AppState>((set) => ({
   view: { name: 'library' },
   settingsOpen: false,
   notice: null,
+  details: null,
+  deleting: null,
   opening: null,
   immersive: false,
   init: async () => {
@@ -71,10 +86,13 @@ export const useApp = create<AppState>((set) => ({
     set((s) => ({
       view,
       settingsOpen: false,
+      details: null,
       opening: view.name === 'reader' ? s.opening : null,
     })),
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
   setNotice: (notice) => set({ notice }),
+  showDetails: (details) => set({ details }),
+  confirmDelete: (deleting) => set({ deleting }),
   setOpening: (opening) => set({ opening }),
   setImmersive: (immersive) => set({ immersive }),
 }))

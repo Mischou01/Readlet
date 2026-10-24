@@ -63,8 +63,13 @@ const byTitle = (a: LibraryBook, b: LibraryBook) =>
 
 /** Series books sort by their position when the titles otherwise tie on author. */
 const bySeries = (a: LibraryBook, b: LibraryBook) =>
-  (a.entry.series ?? '').localeCompare(b.entry.series ?? '') ||
-  (a.entry.seriesIndex ?? 0) - (b.entry.seriesIndex ?? 0)
+  seriesKey(a.entry.series).localeCompare(seriesKey(b.entry.series)) ||
+  (a.entry.seriesIndex ?? Infinity) - (b.entry.seriesIndex ?? Infinity)
+
+/** Books name the same series with different spacing or capitals; this is what they share. */
+function seriesKey(series: string | null): string {
+  return titleSortKey((series ?? '').replace(/\s+/g, ' ').trim()).toLocaleLowerCase()
+}
 
 /** Finished books sink below the rest when sorting by recent reading: they're done with. */
 const finishedLast = (a: LibraryBook, b: LibraryBook) =>
@@ -90,9 +95,43 @@ export function sortBooks(books: LibraryBook[], sort: LibrarySort): LibraryBook[
           bySeries(a, b) ||
           byTitle(a, b),
       )
+    case 'series':
+      return sorted.sort(
+        (a, b) =>
+          Number(!a.entry.series) - Number(!b.entry.series) || bySeries(a, b) || byTitle(a, b),
+      )
     case 'added':
       return sorted.sort((a, b) => b.entry.addedAt - a.entry.addedAt || byTitle(a, b))
   }
+}
+
+export interface SeriesGroup {
+  /** The series' name as the first of its books gives it; `null` for books in no series. */
+  series: string | null
+  /** For linking to the group (`seriesAnchor`). */
+  key: string
+  books: LibraryBook[]
+}
+
+/**
+ * Books sorted by series (`sortBooks(…, 'series')`), grouped: one group per series in order, then
+ * the books that aren't in one.
+ */
+export function groupBySeries(sorted: LibraryBook[]): SeriesGroup[] {
+  const groups: SeriesGroup[] = []
+  for (const book of sorted) {
+    const series = book.entry.series?.replace(/\s+/g, ' ').trim() || null
+    const key = series ? seriesKey(series) : ''
+    const last = groups[groups.length - 1]
+    if (last && last.key === key) last.books.push(book)
+    else groups.push({ series, key, books: [book] })
+  }
+  return groups
+}
+
+/** The element id of a series' group in the library, for scrolling to it. */
+export function seriesAnchor(series: string | null): string {
+  return `series-${encodeURIComponent(seriesKey(series)).replace(/%/g, '')}`
 }
 
 export interface LibraryFilter {

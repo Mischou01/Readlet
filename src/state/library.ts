@@ -33,6 +33,8 @@ interface LibraryState {
   refreshShelves: () => Promise<void>
   putBook: (entry: BookEntry) => void
   putRecord: (record: BookRecord) => void
+  /** Drops books the reader deleted (see `expectDeleted`). */
+  removeBooks: (fingerprints: string[]) => void
   setScanning: (scanning: boolean) => void
   /** Scans the folder because the reader asked to, and reports what changed. */
   rescan: () => void
@@ -44,6 +46,21 @@ interface LibraryState {
 
 /** Files Readlet just copied into the folder and already announced ("Added 2 books"). */
 const announcedFiles = new Set<string>()
+
+/** Books the reader is deleting, so no scan announces them as gone. */
+const deletedBooks = new Set<string>()
+
+/**
+ * Keeps scans from announcing these books as gone: the reader is deleting them. Call before
+ * deleting (the folder watcher may scan before the deletion reports back), and again with
+ * `false` for any that weren't deleted after all.
+ */
+export function expectDeleted(fingerprints: string[], expected = true) {
+  for (const fp of fingerprints) {
+    if (expected) deletedBooks.add(fp)
+    else deletedBooks.delete(fp)
+  }
+}
 
 /** Keeps the next scan from announcing these files (names in the folder) a second time. */
 export function expectAddedFiles(names: string[]) {
@@ -107,6 +124,13 @@ export const useLibrary = create<LibraryState>((set, get) => ({
   refreshShelves: async () => set({ shelves: await api.listShelves() }),
   putBook: (entry) => set((s) => ({ books: { ...s.books, [entry.fingerprint]: entry } })),
   putRecord: (record) => set((s) => ({ records: { ...s.records, [record.fingerprint]: record } })),
+  removeBooks: (fingerprints) => {
+    set((s) => {
+      const books = { ...s.books }
+      for (const fp of fingerprints) delete books[fp]
+      return { books }
+    })
+  },
   setScanning: (scanning) => set({ scanning }),
   rescan: () => {
     set({ scanning: true, rescanRequested: true })
@@ -126,6 +150,9 @@ export const useLibrary = create<LibraryState>((set, get) => ({
     changes.added = changes.added.filter(
       (b) => !announcedFiles.delete(b.path.split('/').pop() ?? b.path),
     )
+    changes.removed = changes.removed.filter((b) => !deletedBooks.has(b.fingerprint))
+    // A deleted book that's back (restored from the trash) is news again.
+    for (const fp of Object.keys(get().books)) deletedBooks.delete(fp)
     const message = scanMessage(changes, requested)
     if (message) useToasts.getState().show({ message })
   },

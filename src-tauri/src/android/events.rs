@@ -14,6 +14,8 @@ use crate::tts::{self, TtsEvent};
 pub const REMOTE_EVENT: &str = "tts:remote";
 /// The system bars or cutouts changed size (rotation, say); payload: `Insets`.
 pub const INSETS_EVENT: &str = "system:insets";
+/// A volume key turned the page (when that setting is on); payload: `PageDirection`.
+pub const PAGE_KEY_EVENT: &str = "reader:page-key";
 
 /// A read-aloud control used outside the app.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -25,6 +27,14 @@ pub enum RemoteAction {
     Next,
     Previous,
     Stop,
+}
+
+/// Which way a key turns the page.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum PageDirection {
+    Next,
+    Previous,
 }
 
 /// What Kotlin reports through the event channel.
@@ -41,6 +51,9 @@ pub enum NativeEvent {
         action: RemoteAction,
     },
     Insets(Insets),
+    PageKey {
+        direction: PageDirection,
+    },
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
@@ -83,6 +96,7 @@ pub fn forward<R: Runtime>(app: &AppHandle<R>, event: NativeEvent) {
         ),
         NativeEvent::Remote { action } => app.emit(REMOTE_EVENT, action),
         NativeEvent::Insets(insets) => app.emit(INSETS_EVENT, insets),
+        NativeEvent::PageKey { direction } => app.emit(PAGE_KEY_EVENT, direction),
     };
     if let Err(e) = result {
         log::warn!("couldn't forward an event to the UI: {e}");
@@ -118,5 +132,13 @@ mod tests {
             serde_json::from_str(r#"{"type":"insets","top":24.5,"right":0,"bottom":16,"left":0}"#)
                 .unwrap();
         assert!(matches!(insets, NativeEvent::Insets(Insets { top, .. }) if top == 24.5));
+        let key: NativeEvent =
+            serde_json::from_str(r#"{"type":"pageKey","direction":"previous"}"#).unwrap();
+        assert_eq!(
+            key,
+            NativeEvent::PageKey {
+                direction: PageDirection::Previous
+            }
+        );
     }
 }
