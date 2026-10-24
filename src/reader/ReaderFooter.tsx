@@ -3,7 +3,7 @@ import type { SectionPages } from './BookView'
 import styles from './reader.module.css'
 
 interface ReaderFooterProps {
-  /** While the toolbar is away the bar is only a gauge: a stray touch mustn't jump. */
+  /** While the toolbar is away, so is the footer on a phone; elsewhere the bar is only a gauge. */
   chromeHidden: boolean
   fraction: number
   /** Minutes left in the chapter at the reader's own pace. */

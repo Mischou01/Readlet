@@ -416,6 +416,9 @@ export function BookView(props: BookViewProps) {
         if (e.screenX === lastPointer.x && e.screenY === lastPointer.y) return
         lastPointer = { x: e.screenX, y: e.screenY }
         callbacks.current.onActivity()
+        // A moving finger is turning the page or selecting text, not looking for the toolbar (and
+        // the slight movement in a tap would show it just before the tap toggles it off again).
+        if (e.pointerType === 'touch') return
         callbacks.current.onPointerMove()
         if (e.pointerType === 'mouse') setHoveredNote(noteAt(e.clientX, e.clientY))
       })
