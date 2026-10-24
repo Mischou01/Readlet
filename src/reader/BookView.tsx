@@ -15,6 +15,7 @@ import {
   type View,
   createView,
 } from './foliate'
+import { touchZoneAt, type TapZone } from './tapZones'
 import { chapterLabel } from './toc'
 
 export interface SelectionInfo {
@@ -73,7 +74,7 @@ export interface BookViewHandle {
   markSpeaking(range: Range | null, color: string): void
 }
 
-export type TapZone = 'left' | 'center' | 'right'
+export type { TapZone } from './tapZones'
 
 /** The screen showing within the current section (chapter), when the text is paginated. */
 export interface SectionPages {
@@ -112,11 +113,6 @@ const WHEEL_COOLDOWN_MS = 450
 const EDGE_TAP_PX = 56
 /** Where a tap turns the page when the text area is unknown (fixed layouts): the outer 22%. */
 const EDGE_TAP_FRACTION = 0.22
-/**
- * On a touch screen the text fills the page, so taps in the outer 30% on each side turn it,
- * whatever is under the finger; the middle shows the toolbar.
- */
-const TOUCH_TAP_FRACTION = 0.3
 /** How long a touch selection must hold still before its toolbar shows (handles may be moving). */
 const TOUCH_SELECTION_SETTLE_MS = 350
 /** How long a tap on the text waits for a second click before it counts as a tap. */
@@ -354,12 +350,9 @@ export function BookView(props: BookViewProps) {
     }
 
     // Pages turn from the margins beside the text; a click on the text itself shows the chrome.
-    const zoneAt = (x: number): TapZone => {
+    const zoneAt = (x: number, y: number): TapZone => {
       const box = host.getBoundingClientRect()
-      if (touch) {
-        const edge = box.width * TOUCH_TAP_FRACTION
-        return x < box.left + edge ? 'left' : x > box.right - edge ? 'right' : 'center'
-      }
+      if (touch) return touchZoneAt(x, y, box)
       const text = textArea?.isConnected ? textArea.getBoundingClientRect() : null
       const left = text
         ? Math.max(text.left, box.left + EDGE_TAP_PX)
@@ -376,7 +369,7 @@ export function BookView(props: BookViewProps) {
     // Clicks in the margins land on the view itself, outside the page's iframe.
     const onHostClick = (e: MouseEvent) => {
       callbacks.current.onActivity()
-      callbacks.current.onTap(zoneAt(e.clientX))
+      callbacks.current.onTap(zoneAt(e.clientX, e.clientY))
     }
 
     const attachToPage = (doc: Document, index: number) => {
@@ -445,13 +438,14 @@ export function BookView(props: BookViewProps) {
         if (!doc.getSelection()?.isCollapsed) return
         const frame = doc.defaultView?.frameElement?.getBoundingClientRect()
         const x = e.clientX + (frame?.left ?? 0)
+        const y = e.clientY + (frame?.top ?? 0)
         // foliate reports highlight clicks from its own listener, after this one.
         setTimeout(() => {
           if (highlightClicked) {
             highlightClicked = false
             return
           }
-          const zone = zoneAt(x)
+          const zone = zoneAt(x, y)
           // Margins turn the page at once. A click on the text waits to see whether it's the start
           // of a double-click, so selecting a word doesn't flash the toolbar or the selection bar.
           // (Touch selects with a long press instead, so taps needn't wait.)

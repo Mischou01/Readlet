@@ -683,6 +683,10 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
 
   const onTap = (zone: TapZone) => {
     if (closeOverlays()) return
+    if (zone === 'bookmark') {
+      void toggleBookmark()
+      return
+    }
     if (zone === 'center' || readerPrefs.scrolled) {
       setChromeVisible((v) => !v)
       return
