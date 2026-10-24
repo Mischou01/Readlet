@@ -8,6 +8,7 @@ import android.os.Environment
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.provider.Settings
+import android.view.WindowManager
 import android.webkit.WebView
 import androidx.activity.result.ActivityResult
 import androidx.appcompat.app.AppCompatActivity
@@ -62,10 +63,16 @@ class SystemBarsArgs {
   var hidden: Boolean = false
 }
 
+@InvokeArg
+class ReaderControlsArgs {
+  var keepScreenOn: Boolean = false
+  var volumeKeys: Boolean = false
+}
+
 /**
  * What only Android can do for Readlet, called from Rust (src-tauri/src/android): read-aloud
  * through the system's text-to-speech, the media notification, "All files access", the system
- * pickers and the system bars. Everything it reports goes through one channel to Rust, which
+ * pickers, the system bars, and keeping the screen on and the volume keys while reading. Everything it reports goes through one channel to Rust, which
  * forwards it to the UI.
  */
 @TauriPlugin
@@ -101,10 +108,18 @@ class ReadletPlugin(private val activity: Activity) : Plugin(activity) {
         put("action", action)
       })
     }
+    MainActivity.onPageKey = { direction ->
+      emit(JSObject().apply {
+        put("type", "pageKey")
+        put("direction", direction)
+      })
+    }
   }
 
   override fun onDestroy(activity: AppCompatActivity) {
     PlaybackService.onRemoteAction = null
+    MainActivity.onPageKey = null
+    MainActivity.volumeKeysTurnPages = false
     PlaybackService.stop(activity)
     speech.shutdown()
   }
@@ -305,6 +320,24 @@ class ReadletPlugin(private val activity: Activity) : Plugin(activity) {
         controller.hide(WindowInsetsCompat.Type.systemBars())
       } else {
         controller.show(WindowInsetsCompat.Type.systemBars())
+      }
+      invoke.resolve()
+    }
+  }
+
+  /**
+   * While reading: keeps the screen from dimming and locking (the reader turns this off again
+   * after a while without a page turn or a tap), and lets the volume keys turn pages.
+   */
+  @Command
+  fun setReaderControls(invoke: Invoke) {
+    val args = invoke.parseArgs(ReaderControlsArgs::class.java)
+    MainActivity.volumeKeysTurnPages = args.volumeKeys
+    activity.runOnUiThread {
+      if (args.keepScreenOn) {
+        activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+      } else {
+        activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
       }
       invoke.resolve()
     }

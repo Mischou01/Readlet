@@ -59,6 +59,24 @@ export function htmlToText(html: string): string {
   return (doc.body.textContent ?? '').replace(/\s+/g, ' ').trim()
 }
 
+/**
+ * A description (HTML or plain text) as paragraphs: breaks and block elements in HTML end one,
+ * as do blank lines in plain text.
+ */
+export function htmlToParagraphs(html: string): string[] {
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  for (const br of Array.from(doc.body.querySelectorAll('br'))) br.replaceWith('\n\n')
+  for (const block of Array.from(
+    doc.body.querySelectorAll('p, div, li, blockquote, h1, h2, h3, h4, h5, h6'),
+  )) {
+    block.append('\n\n')
+  }
+  return (doc.body.textContent ?? '')
+    .split(/\n\s*\n/)
+    .map((p) => p.replace(/\s+/g, ' ').trim())
+    .filter((p) => p.length > 0)
+}
+
 export function countWords(text: string): number {
   return text.match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu)?.length ?? 0
 }

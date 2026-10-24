@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { book, highlight } from '../test/fixtures'
-import { filterBooks, pickCurrentBook, sortBooks, statusOf } from './model'
+import { filterBooks, groupBySeries, pickCurrentBook, sortBooks, statusOf } from './model'
 
 const progress = (fraction: number, updatedAt: number) => ({ cfi: 'x', fraction, updatedAt })
 
@@ -124,5 +124,29 @@ describe('pickCurrentBook', () => {
   it('picks the most recently read unfinished book that can be opened', () => {
     expect(pickCurrentBook([waves, dune, emma, locked])?.fingerprint).toBe('d')
     expect(pickCurrentBook([emma])).toBeNull()
+  })
+})
+
+describe('series', () => {
+  const inSeries = (fingerprint: string, series: string | null, seriesIndex: number | null) =>
+    book({ fingerprint, title: `Book ${fingerprint}`, series, seriesIndex })
+
+  it('sorts by series and position, with books in no series last', () => {
+    const books = [
+      inSeries('x', null, null),
+      inSeries('b2', 'The Expanse', 2),
+      inSeries('a1', 'Dune', 1),
+      inSeries('b1', 'the  expanse', 1),
+      inSeries('bq', 'The Expanse', null),
+      inSeries('a3', 'Dune', 3),
+    ]
+    const sorted = sortBooks(books, 'series')
+    expect(sorted.map((b) => b.fingerprint)).toEqual(['a1', 'a3', 'b1', 'b2', 'bq', 'x'])
+    // Spelling differences in the same series still group together, under the first name seen.
+    expect(groupBySeries(sorted).map((g) => [g.series, g.books.length])).toEqual([
+      ['Dune', 2],
+      ['the expanse', 3],
+      [null, 1],
+    ])
   })
 })

@@ -59,6 +59,7 @@ import { TextSettingsSheet } from './TextSettingsSheet'
 import { readerChromeVars, resolveReadingTheme } from './themes'
 import { useBookPace } from './useBookPace'
 import { useReadAloud } from './useReadAloud'
+import { useReaderControls } from './useReaderControls'
 import { chapterLabel } from './toc'
 import { useReadingSession } from './useReadingSession'
 
@@ -341,11 +342,30 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
   useEffect(() => useApp.getState().setImmersive(immersive), [immersive])
   useEffect(() => () => useApp.getState().setImmersive(false), [])
 
+  // -- Screen and volume keys (Android) --------------------------------------------------------
+
+  const { poke: keepScreenOn } = useReaderControls({
+    screenOnMinutes: readerPrefs.screenOnMinutes,
+    // While reading aloud, the volume keys set the volume.
+    volumeKeys: readerPrefs.volumeKeys && !readingAloud,
+    onPageKey: (direction) => {
+      // Not behind a dialog that's being typed in.
+      if (noteFor || namingBookmark) return
+      keepScreenOn()
+      if (direction === 'next') handle.current?.next()
+      else handle.current?.prev()
+    },
+  })
+  const onActivity = useCallback(() => {
+    session.activity()
+    keepScreenOn()
+  }, [session, keepScreenOn])
+
   const lastPointer = useRef({ x: -1, y: -1 })
   const onPointerMove = (e: React.PointerEvent) => {
     if (e.clientX === lastPointer.current.x && e.clientY === lastPointer.current.y) return
     lastPointer.current = { x: e.clientX, y: e.clientY }
-    session.activity()
+    onActivity()
     showChrome()
   }
 
@@ -796,7 +816,7 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
             onExternalLink={(href) =>
               void openUrl(href).catch((e) => showError(toAppError(e).message))
             }
-            onActivity={session.activity}
+            onActivity={onActivity}
             onPointerMove={showChrome}
             onTap={onTap}
             onKeyDown={(e) => onKey.current(e)}

@@ -7,7 +7,7 @@ import { Dialog } from '../components/Dialog'
 import fieldStyles from '../components/fields.module.css'
 import { Menu, MenuButton, type MenuAnchor, type MenuEntry } from '../components/Menu'
 import { ProgressBar } from '../components/Progress'
-import { formatAuthors, formatDay, formatPercent, pluralize } from '../lib/format'
+import { formatAuthors, formatDay, formatPercent, formatSeries, pluralize } from '../lib/format'
 import { newId } from '../lib/ids'
 import { isAndroid, usePhoneLayout } from '../lib/platform'
 import type { ReadingStatus, Shelf } from '../lib/types'
@@ -17,7 +17,7 @@ import { usePreferences, type LibrarySort, type LibraryTab } from '../state/pref
 import { useToasts } from '../state/toasts'
 import { openBook, revealBook } from './actions'
 import styles from './library.module.css'
-import { filterBooks, sortBooks, type LibraryBook } from './model'
+import { filterBooks, groupBySeries, seriesAnchor, sortBooks, type LibraryBook } from './model'
 import { useBookSelection, type BookSelection } from './selection'
 import { SelectionBar } from './SelectionBar'
 import { deleteShelf, saveShelf, setStatusOf, shelfHasAll, toggleShelf } from './shelves'
@@ -33,6 +33,7 @@ const SORTS: { id: LibrarySort; label: string }[] = [
   { id: 'recent', label: 'Recently read' },
   { id: 'title', label: 'Title' },
   { id: 'author', label: 'Author' },
+  { id: 'series', label: 'Series' },
   { id: 'added', label: 'Recently added' },
 ]
 
@@ -71,6 +72,12 @@ export function BookCollection({ books, query }: { books: LibraryBook[]; query: 
     [books, tab, query, shelf, sort],
   )
   const visibleIds = useMemo(() => visible.map((b) => b.fingerprint), [visible])
+  // Sorted by series, books gather under their series' names (if any of them has one).
+  const groups = useMemo(() => {
+    if (sort !== 'series') return null
+    const grouped = groupBySeries(visible)
+    return grouped.some((g) => g.series) ? grouped : null
+  }, [sort, visible])
   const selection = useBookSelection(visibleIds)
 
   const shelfItems: MenuEntry[] = [
@@ -129,6 +136,27 @@ export function BookCollection({ books, query }: { books: LibraryBook[]; query: 
     menu && selection.selected.length > 1 && selection.has(menu.book.fingerprint)
       ? selection.selected
       : null
+
+  const renderBooks = (list: LibraryBook[], inSeries: boolean) => (
+    <ul
+      className={layout === 'grid' ? styles.grid : styles.list}
+      data-selecting={selection.selecting || undefined}
+    >
+      {list.map((book) => {
+        const Item = layout === 'grid' ? BookTile : BookRow
+        return (
+          <Item
+            key={book.fingerprint}
+            book={book}
+            inSeries={inSeries}
+            selection={selection}
+            onClick={onBookClick}
+            onMenu={openMenu}
+          />
+        )
+      })}
+    </ul>
+  )
 
   return (
     <section className={styles.books} aria-label="Your books">
@@ -196,24 +224,22 @@ export function BookCollection({ books, query }: { books: LibraryBook[]; query: 
 
       {visible.length === 0 ? (
         <p className={styles.empty}>{emptyMessage(tab, query, shelf)}</p>
+      ) : groups ? (
+        groups.map((group) => (
+          <section
+            key={group.key}
+            className={styles.seriesGroup}
+            aria-labelledby={seriesAnchor(group.series)}
+          >
+            <h2 id={seriesAnchor(group.series)} className={styles.seriesHeading}>
+              {group.series ?? 'Not in a series'}
+              <span>{pluralize(group.books.length, 'book')}</span>
+            </h2>
+            {renderBooks(group.books, true)}
+          </section>
+        ))
       ) : (
-        <ul
-          className={layout === 'grid' ? styles.grid : styles.list}
-          data-selecting={selection.selecting || undefined}
-        >
-          {visible.map((book) => {
-            const Item = layout === 'grid' ? BookTile : BookRow
-            return (
-              <Item
-                key={book.fingerprint}
-                book={book}
-                selection={selection}
-                onClick={onBookClick}
-                onMenu={openMenu}
-              />
-            )
-          })}
-        </ul>
+        renderBooks(visible, false)
       )}
 
       {menu && (
@@ -265,6 +291,11 @@ export function BookCollection({ books, query }: { books: LibraryBook[]; query: 
               commonStatus(selection.selected, books),
               selection.exit,
             )}
+            onDelete={() =>
+              useApp
+                .getState()
+                .confirmDelete({ fingerprints: selection.selected, onDeleted: selection.exit })
+            }
           />
         )}
       </AnimatePresence>
@@ -290,6 +321,8 @@ function emptyMessage(tab: LibraryTab, query: string, shelf: Shelf | null): stri
 
 interface ItemProps {
   book: LibraryBook
+  /** Shown under its series' heading, so only its position in the series is needed. */
+  inSeries: boolean
   selection: BookSelection
   onClick: (book: LibraryBook, e: MouseEvent<HTMLElement>) => void
   onMenu: (book: LibraryBook, e: MouseEvent) => void
@@ -311,7 +344,16 @@ function SelectToggle({ book, selection }: Pick<ItemProps, 'book' | 'selection'>
   )
 }
 
-function BookTile({ book, selection, onClick, onMenu }: ItemProps) {
+/** "Book 2 · Author" under a series heading; just the authors elsewhere. */
+function byline(book: LibraryBook, inSeries: boolean): string {
+  const authors = formatAuthors(book.authors)
+  const index = book.entry.seriesIndex
+  if (!inSeries || !book.entry.series || index == null || index <= 0) return authors
+  const position = `Book ${index.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
+  return authors ? `${position} · ${authors}` : position
+}
+
+function BookTile({ book, inSeries, selection, onClick, onMenu }: ItemProps) {
   const selected = selection.selecting && selection.has(book.fingerprint)
   const phone = usePhoneLayout()
   return (
@@ -336,7 +378,7 @@ function BookTile({ book, selection, onClick, onMenu }: ItemProps) {
         <span className={styles.tileTitle} title={book.title}>
           {book.title}
         </span>
-        <span className={styles.tileAuthor}>{formatAuthors(book.authors) || ' '}</span>
+        <span className={styles.tileAuthor}>{byline(book, inSeries) || ' '}</span>
       </button>
       {book.status === 'reading' && (
         <div className={styles.tileProgress}>
@@ -361,7 +403,7 @@ function BookTile({ book, selection, onClick, onMenu }: ItemProps) {
   )
 }
 
-function BookRow({ book, selection, onClick, onMenu }: ItemProps) {
+function BookRow({ book, inSeries, selection, onClick, onMenu }: ItemProps) {
   const lastRead = book.lastReadAt ? formatDay(book.lastReadAt) : ''
   const selected = selection.selecting && selection.has(book.fingerprint)
   return (
@@ -381,7 +423,12 @@ function BookRow({ book, selection, onClick, onMenu }: ItemProps) {
           <span className={styles.tileTitle} style={{ marginTop: 0 }}>
             {book.title}
           </span>
-          <span className={styles.tileAuthor}>{formatAuthors(book.authors)}</span>
+          <span className={styles.tileAuthor}>{byline(book, inSeries)}</span>
+          {!inSeries && book.entry.series && (
+            <span className={styles.rowSeries}>
+              {formatSeries(book.entry.series, book.entry.seriesIndex)}
+            </span>
+          )}
         </span>
       </button>
       <span className={styles.numeric}>
@@ -463,8 +510,10 @@ function bookMenuItems(
   actions: MenuActions & { select: () => void },
 ): MenuEntry[] {
   const navigate = useApp.getState().navigate
+  const app = useApp.getState()
   return [
     { id: 'open', label: 'Open', onSelect: () => openBook(book) },
+    { id: 'details', label: 'About this book', onSelect: () => app.showDetails(book.fingerprint) },
     ...(book.highlights.length
       ? [
           {
@@ -491,6 +540,13 @@ function bookMenuItems(
     { separator: true, id: 's2' },
     { heading: 'Shelves', id: 'h-shelves' },
     ...shelfMenuItems([book.fingerprint], shelves, actions),
+    { separator: true, id: 's3' },
+    {
+      id: 'delete',
+      label: 'Delete…',
+      danger: true,
+      onSelect: () => app.confirmDelete({ fingerprints: [book.fingerprint] }),
+    },
   ]
 }
 
@@ -507,6 +563,13 @@ function selectionMenuItems(
     { separator: true, id: 's2' },
     { heading: 'Shelves', id: 'h-shelves' },
     ...shelfMenuItems(fingerprints, shelves, actions),
+    { separator: true, id: 's3' },
+    {
+      id: 'delete',
+      label: `Delete ${pluralize(fingerprints.length, 'book')}…`,
+      danger: true,
+      onSelect: () => useApp.getState().confirmDelete({ fingerprints, onDeleted: actions.done }),
+    },
   ]
 }
 

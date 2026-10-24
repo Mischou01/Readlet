@@ -83,6 +83,7 @@ pub fn run() {
             commands::set_book_metadata,
             commands::set_book_cover,
             commands::add_books,
+            commands::delete_books,
             commands::reveal_book,
             commands::list_records,
             commands::get_record,
@@ -112,6 +113,7 @@ pub fn run() {
             platform::import_books,
             platform::set_system_bars,
             platform::system_insets,
+            platform::set_reader_controls,
             platform::move_to_background,
         ])
         .run(tauri::generate_context!())
