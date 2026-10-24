@@ -5,7 +5,8 @@
 # - Pushes to main replace the rolling "main-build" pre-release.
 # - Pull requests from branches of this repository build the APK only, into the rolling
 #   "test-build" pre-release, to try a change on a phone before it's merged. (Pull requests from
-#   forks get no secrets, so they can't sign one.)
+#   forks get no secrets, so they can't sign one.) test-build-cleanup.yml removes it when that
+#   pull request is merged or closed.
 # - A tag like v0.2.0 publishes a release of that version. The tag must match the version in
 #   src-tauri/tauri.conf.json.
 #
