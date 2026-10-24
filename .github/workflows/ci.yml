@@ -12,14 +12,16 @@
 #
 # Packages go to GitHub Releases rather than staying as workflow artifacts: release files don't
 # count against the account's Actions storage. The APK is only published when it's signed (the
-# ANDROID_KEYSTORE and ANDROID_KEYSTORE_PASSWORD secrets; see README, "Signing the APK").
+# ANDROID_KEYSTORE and ANDROID_KEYSTORE_PASSWORD secrets; see docs/SIGNING.md).
 name: CI
 
 on:
   push:
     branches: [main]
     tags: ['v*']
+    paths-ignore: ['**.md', 'docs/**', LICENSE]
   pull_request:
+    paths-ignore: ['**.md', 'docs/**', LICENSE]
 
 permissions:
   contents: read
@@ -193,7 +195,7 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
           if [ -z "$KEYSTORE" ] || [ -z "$KEYSTORE_PASSWORD" ]; then
-            echo "::warning title=APK not signed::Add the ANDROID_KEYSTORE and ANDROID_KEYSTORE_PASSWORD secrets to publish the APK (README, \"Signing the APK\")."
+            echo "::warning title=APK not signed::Add the ANDROID_KEYSTORE and ANDROID_KEYSTORE_PASSWORD secrets to publish the APK (see docs/SIGNING.md)."
             echo "signed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
