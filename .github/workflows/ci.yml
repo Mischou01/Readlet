@@ -238,7 +238,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          ls -l packages
+          # The Linux artifact keeps its deb/, rpm/ and appimage/ folders; the APK sits at the top.
+          mapfile -t files < <(find packages -type f \( -name '*.deb' -o -name '*.rpm' \
+            -o -name '*.AppImage' -o -name '*.apk' \) | sort)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "::error::No packages were downloaded."
+            exit 1
+          fi
+          printf '%s\n' "${files[@]}"
           if [ "$GITHUB_REF_TYPE" = tag ]; then
             version=$(jq -r .version src-tauri/tauri.conf.json)
             if [ "$GITHUB_REF_NAME" != "v$version" ]; then
@@ -246,7 +253,7 @@ jobs:
               exit 1
             fi
             gh release create "$GITHUB_REF_NAME" --verify-tag --title "Readlet $version" \
-              --generate-notes packages/*
+              --generate-notes "${files[@]}"
           else
             # A rolling pre-release, replaced on every push to main.
             if gh release view main-build > /dev/null 2>&1; then
@@ -255,5 +262,5 @@ jobs:
             gh release create main-build --prerelease --target "$GITHUB_SHA" \
               --title "Latest build from main" \
               --notes "Built from $GITHUB_SHA. Replaced on every push to main." \
-              packages/*
+              "${files[@]}"
           fi
