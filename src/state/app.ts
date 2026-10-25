@@ -43,6 +43,8 @@ interface AppState {
   notice: Notice | null
   /** The book whose details sheet is open. */
   details: string | null
+  /** Whether that sheet was opened to edit the details, rather than to read them. */
+  editingDetails: boolean
   /** Books waiting for the reader to confirm deleting them. */
   deleting: PendingDelete | null
   opening: OpeningCover | null
@@ -53,7 +55,7 @@ interface AppState {
   navigate: (view: View) => void
   setSettingsOpen: (open: boolean) => void
   setNotice: (notice: Notice | null) => void
-  showDetails: (fingerprint: string | null) => void
+  showDetails: (fingerprint: string | null, options?: { edit?: boolean }) => void
   /** Asks before deleting books (`DeleteBooksDialog`); `null` closes the question. */
   confirmDelete: (pending: PendingDelete | null) => void
   /** Starts the "open book" transition; the reader ends it once the book is on screen. */
@@ -69,6 +71,7 @@ export const useApp = create<AppState>((set) => ({
   settingsOpen: false,
   notice: null,
   details: null,
+  editingDetails: false,
   deleting: null,
   opening: null,
   immersive: false,
@@ -91,7 +94,7 @@ export const useApp = create<AppState>((set) => ({
     })),
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
   setNotice: (notice) => set({ notice }),
-  showDetails: (details) => set({ details }),
+  showDetails: (details, options) => set({ details, editingDetails: !!options?.edit }),
   confirmDelete: (deleting) => set({ deleting }),
   setOpening: (opening) => set({ opening }),
   setImmersive: (immersive) => set({ immersive }),
