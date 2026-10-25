@@ -8,6 +8,7 @@ E-reader for Linux and Android. Built with Tauri 2, React and
 ## Features
 
 - Library with search, sorting, series, shelves, reading status and book details
+- Editable book details and covers, with lookup on Open Library
 - Formats: EPUB, MOBI, AZW3, FB2, CBZ and PDF (experimental); no DRM support
 - Paginated or scrolled reader, two-page spreads, table of contents, in-book search, four themes,
   adjustable fonts and spacing
@@ -27,8 +28,11 @@ E-reader for Linux and Android. Built with Tauri 2, React and
 Readlet reads books from a folder and stores progress, highlights and stats in `.readlet/` inside
 it. Each device writes only to its own subdirectory and all of them are merged on read, so the
 folder can be synced with Syncthing, Nextcloud or similar without conflicts. Book files are never
-modified. Books are identified by a content fingerprint, so renaming or moving a file keeps its
+modified: edited details and chosen covers are stored in `.readlet/` too. Books are identified by a content fingerprint, so renaming or moving a file keeps its
 data. The SQLite index in the app data directory is a cache and can be rebuilt from the folder.
+
+Readlet only goes online when asked: Wiktionary for word lookups (once enabled in Settings), and
+Open Library when you search for a book's details.
 
 ## Install
 

@@ -4,6 +4,8 @@
 //! newer Readlet with a value this version doesn't know still loads. Inputs from the UI are
 //! validated before anything is written. Unknown fields are kept in `extra` and written back.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -13,6 +15,20 @@ pub const STATUSES: [&str; 3] = ["reading", "toRead", "finished"];
 pub const HIGHLIGHT_COLORS: [&str; 5] = ["butter", "peach", "mint", "sky", "lilac"];
 pub const ANNOTATION_KINDS: [&str; 2] = ["highlight", "bookmark"];
 pub const GOAL_UNITS: [&str; 2] = ["books", "minutes"];
+/// The details field holding a cover the reader chose (`index::CoverEdit`), or null for none.
+pub const COVER_FIELD: &str = "cover";
+/// The book details the reader can edit, as named in `BookMetadata`'s JSON.
+pub const DETAIL_FIELDS: [&str; 9] = [
+    "title",
+    "authors",
+    "series",
+    "seriesIndex",
+    "language",
+    "publisher",
+    "published",
+    "description",
+    "identifier",
+];
 
 /// A value with the time it was last changed, for last-writer-wins merging.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -72,6 +88,13 @@ pub struct BookRecord {
     pub progress: Option<Progress>,
     pub status: Option<Stamped<String>>,
     pub annotations: Vec<Annotation>,
+    /// Details the reader changed, by field (see `DETAIL_FIELDS`), each with its own timestamp so
+    /// edits to different fields on two devices both survive. A null value leaves the field blank.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub details: BTreeMap<String, Stamped<Value>>,
+    /// When the details were last reset to the book's own: edits from before then don't apply.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub details_reset_at: Option<i64>,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }

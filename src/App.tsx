@@ -122,10 +122,11 @@ function Shell({ libraryRoot }: { libraryRoot: string }) {
       }),
       events.onStoreChanged(async (changes) => {
         try {
-          const { refreshRecords, refreshShelves } = useLibrary.getState()
+          const { refreshRecords, refreshBooksById, refreshShelves } = useLibrary.getState()
           const stats = useStats.getState()
           await Promise.all([
             changes.books.length ? refreshRecords(changes.books) : null,
+            changes.books.length ? refreshBooksById(changes.books) : null,
             changes.shelves ? refreshShelves() : null,
             changes.sessions ? stats.refreshSessions() : null,
             changes.profile ? stats.refreshProfile() : null,

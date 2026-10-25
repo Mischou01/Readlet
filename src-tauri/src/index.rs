@@ -1,14 +1,17 @@
 //! The SQLite index: a cache of what's in the library folder and each book's metadata, cover and
 //! aura. Deleting it is safe; Readlet rebuilds it from the folder (docs/PLAN.md §4).
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 
 use crate::aura::Palette;
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::library::formats::BookFormat;
+use crate::store::model::{BookRecord, COVER_FIELD, DETAIL_FIELDS, Stamped};
 
 /// Bump to rebuild the cache after a schema change.
 const SCHEMA_VERSION: i32 = 1;
@@ -68,6 +71,50 @@ impl BookMetadata {
         self.identifier = clean(self.identifier, 300);
         self
     }
+
+    /// These details with the reader's edits applied over them, and the fields that were edited.
+    /// An edit this version can't read (written by a newer one, or by hand) is skipped.
+    pub fn with_edits(&self, edits: &BTreeMap<String, Stamped<Value>>) -> (Self, Vec<String>) {
+        let Ok(Value::Object(mut fields)) = serde_json::to_value(self) else {
+            return (self.clone(), Vec::new());
+        };
+        let mut edited = Vec::new();
+        for (field, edit) in edits {
+            if !DETAIL_FIELDS.contains(&field.as_str()) {
+                continue;
+            }
+            let mut candidate = fields.clone();
+            if edit.value.is_null() {
+                candidate.remove(field);
+            } else {
+                candidate.insert(field.clone(), edit.value.clone());
+            }
+            if serde_json::from_value::<Self>(Value::Object(candidate.clone())).is_ok() {
+                fields = candidate;
+                edited.push(field.clone());
+            }
+        }
+        let metadata = serde_json::from_value::<Self>(Value::Object(fields))
+            .map(Self::sanitized)
+            .unwrap_or_else(|_| self.clone());
+        (metadata, edited)
+    }
+
+    /// One field as the reader typed it, cleaned like extracted details. Null means left blank.
+    pub fn clean_field(field: &str, value: Value) -> Result<Value> {
+        if !DETAIL_FIELDS.contains(&field) {
+            return Err(Error::invalid(format!("unknown book detail: {field}")));
+        }
+        let one = Map::from_iter([(field.to_owned(), value)]);
+        let metadata: Self = serde_json::from_value(Value::Object(one))
+            .map_err(|_| Error::invalid(format!("invalid book detail: {field}")))?;
+        let cleaned = serde_json::to_value(metadata.sanitized())?;
+        Ok(match cleaned.get(field) {
+            Some(Value::Array(items)) if items.is_empty() => Value::Null,
+            Some(value) => value.clone(),
+            None => Value::Null,
+        })
+    }
 }
 
 /// A book as the UI sees it.
@@ -85,9 +132,46 @@ pub struct BookEntry {
     pub metadata_error: Option<String>,
     #[serde(flatten)]
     pub metadata: BookMetadata,
+    /// The details the reader edited (see `DETAIL_FIELDS`); the others are the book's own.
+    pub edited: Vec<String>,
     /// Increments whenever the cover changes, so the UI can bust its image cache.
     pub cover_version: Option<i64>,
     pub palette: Option<Palette>,
+}
+
+/// A cover the reader chose, as its edit in the book's record holds it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CoverEdit {
+    /// Where the thumbnail is, relative to the devices folder (see `Store::cover_file`).
+    pub file: String,
+    pub palette: Palette,
+}
+
+impl BookEntry {
+    /// Applies the reader's edits from the book's record. A chosen cover's version is the time it
+    /// was chosen, so its URL changes with it.
+    pub fn with_edits(mut self, record: &BookRecord) -> Self {
+        if record.details.is_empty() {
+            return self;
+        }
+        (self.metadata, self.edited) = self.metadata.with_edits(&record.details);
+        if let Some(edit) = record.details.get(COVER_FIELD) {
+            let cover = if edit.value.is_null() {
+                Some((None, Palette::from_seed(&self.fingerprint)))
+            } else {
+                serde_json::from_value::<CoverEdit>(edit.value.clone())
+                    .ok()
+                    .map(|c| (Some(edit.updated_at), c.palette))
+            };
+            if let Some((version, palette)) = cover {
+                self.cover_version = version;
+                self.palette = Some(palette);
+                self.edited.push(COVER_FIELD.to_owned());
+                self.edited.sort();
+            }
+        }
+        self
+    }
 }
 
 pub struct Index {
@@ -328,6 +412,7 @@ fn book_from_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<BookEntry> {
         metadata: metadata
             .and_then(|m| serde_json::from_str(&m).ok())
             .unwrap_or_default(),
+        edited: Vec::new(),
         cover_version: r.get(10)?,
         palette: palette.and_then(|p| serde_json::from_str(&p).ok()),
     })
@@ -336,6 +421,91 @@ fn book_from_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<BookEntry> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn edits_apply_over_the_books_own_details() {
+        let own = BookMetadata {
+            title: Some("Iron Gold".into()),
+            authors: vec!["Pierce Brown".into()],
+            series: Some("Red Rising".into()),
+            ..Default::default()
+        };
+        let edit = |value: Value| Stamped {
+            value,
+            updated_at: 1,
+        };
+        let edits = BTreeMap::from([
+            ("title".into(), edit(json!("  Iron Gold (Red Rising 4) "))),
+            ("series".into(), edit(Value::Null)),
+            ("seriesIndex".into(), edit(json!("not a number"))),
+            ("rating".into(), edit(json!(5))),
+        ]);
+        let (metadata, edited) = own.with_edits(&edits);
+        assert_eq!(metadata.title.as_deref(), Some("Iron Gold (Red Rising 4)"));
+        assert_eq!(metadata.authors, ["Pierce Brown"]);
+        assert_eq!(metadata.series, None);
+        assert_eq!(edited, ["series", "title"]);
+    }
+
+    #[test]
+    fn a_chosen_cover_replaces_the_books_own() {
+        let entry = BookEntry {
+            fingerprint: "fp".into(),
+            path: "a.epub".into(),
+            format: BookFormat::Epub,
+            size: 1,
+            drm: false,
+            added_at: 0,
+            modified_at: 0,
+            metadata_ready: true,
+            metadata_error: None,
+            metadata: BookMetadata::default(),
+            edited: Vec::new(),
+            cover_version: Some(3),
+            palette: None,
+        };
+        let palette = Palette::from_seed("cover");
+        let chosen = Stamped {
+            value: serde_json::to_value(CoverEdit {
+                file: "dev/covers/fp-42.jpg".into(),
+                palette: palette.clone(),
+            })
+            .unwrap(),
+            updated_at: 42,
+        };
+        let record = |edit: Stamped<Value>| BookRecord {
+            details: BTreeMap::from([(COVER_FIELD.to_owned(), edit)]),
+            ..BookRecord::new("fp")
+        };
+        let with_cover = entry.clone().with_edits(&record(chosen));
+        assert_eq!(with_cover.cover_version, Some(42));
+        assert_eq!(with_cover.palette, Some(palette));
+        assert_eq!(with_cover.edited, ["cover"]);
+
+        let none = Stamped {
+            value: Value::Null,
+            updated_at: 43,
+        };
+        let without = entry.with_edits(&record(none));
+        assert_eq!(without.cover_version, None);
+        assert_eq!(without.palette, Some(Palette::from_seed("fp")));
+    }
+
+    #[test]
+    fn cleans_a_field_as_typed() {
+        let clean = BookMetadata::clean_field;
+        assert_eq!(clean("title", json!("  Emma ")).unwrap(), json!("Emma"));
+        assert_eq!(
+            clean("authors", json!([" ", "Jane Austen"])).unwrap(),
+            json!(["Jane Austen"])
+        );
+        assert_eq!(clean("authors", json!([])).unwrap(), Value::Null);
+        assert_eq!(clean("series", json!("")).unwrap(), Value::Null);
+        assert_eq!(clean("seriesIndex", json!(2.5)).unwrap(), json!(2.5));
+        assert!(clean("seriesIndex", json!("two")).is_err());
+        assert!(clean("rating", json!(5)).is_err());
+    }
 
     fn file(fp: &str, path: &str) -> FileRecord {
         FileRecord {

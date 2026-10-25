@@ -5,9 +5,13 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import type {
   AppError,
   AppInfo,
+  BookDetailsPatch,
   BookEntry,
   BookMetadata,
   BookRecord,
+  FoundBook,
+  FoundDetails,
+  FreeBook,
   Profile,
   Resurfaced,
   ScanReport,
@@ -50,13 +54,31 @@ export const api = {
   chooseLibrary: (path: string) => invoke<AppInfo>('choose_library', { path }),
   rescanLibrary: () => invoke<void>('rescan_library'),
   listBooks: () => invoke<BookEntry[]>('list_books'),
+  getBooks: (fingerprints: string[]) => invoke<BookEntry[]>('get_books', { fingerprints }),
   booksNeedingMetadata: () => invoke<string[]>('books_needing_metadata'),
   setBookMetadata: (fingerprint: string, metadata: BookMetadata, error?: string) =>
     invoke<BookEntry>('set_book_metadata', { fingerprint, metadata, error: error ?? null }),
   /** An empty `bytes` means the book has no cover. */
   setBookCover: (fingerprint: string, bytes: Uint8Array) =>
     invoke<BookEntry>('set_book_cover', bytes, { headers: { 'x-fingerprint': fingerprint } }),
+  /** Changes some details; null leaves a field blank. Fields left out keep their value. */
+  setBookDetails: (fingerprint: string, details: BookDetailsPatch) =>
+    invoke<BookEntry>('set_book_details', { fingerprint, details }),
+  resetBookDetails: (fingerprint: string) =>
+    invoke<BookEntry>('reset_book_details', { fingerprint }),
+  /** A cover the reader picked; empty `bytes` means no cover at all. */
+  chooseBookCover: (fingerprint: string, bytes: Uint8Array) =>
+    invoke<BookEntry>('choose_book_cover', bytes, { headers: { 'x-fingerprint': fingerprint } }),
+  chooseBookCoverOnline: (fingerprint: string, cover: number) =>
+    invoke<BookEntry>('choose_book_cover_online', { fingerprint, cover }),
+  searchBookDetails: (query: string) => invoke<FoundBook[]>('search_book_details', { query }),
+  fetchBookDetails: (work: string, edition: string | null) =>
+    invoke<FoundDetails>('fetch_book_details', { work, edition }),
   addBooks: (paths: string[]) => invoke<string[]>('add_books', { paths }),
+  searchFreeBooks: (query: string) => invoke<FreeBook[]>('search_free_books', { query }),
+  /** Returns the name the book was added under; none if it's already in the folder. */
+  downloadFreeBook: (book: FreeBook) =>
+    invoke<string[]>('download_free_book', { id: book.id, title: book.title, author: book.author }),
   revealBook: (fingerprint: string) => invoke<void>('reveal_book', { fingerprint }),
   /** To the trash on the desktop, for good on Android; reading data is kept. */
   deleteBooks: (fingerprints: string[]) =>

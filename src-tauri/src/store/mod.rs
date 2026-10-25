@@ -3,7 +3,8 @@
 //! ```text
 //! <library>/.readlet/devices/<device-id>/
 //!   device.json                  { name } so people can tell the folders apart
-//!   books/<fingerprint>.json     progress, status, highlights, notes, bookmarks
+//!   books/<fingerprint>.json     progress, status, highlights, notes, bookmarks, edited details
+//!   covers/<fingerprint>-<t>.jpg covers the reader chose (the record says which one applies)
 //!   profile.json                 reading goals
 //!   shelves.json
 //!   sessions/<year>.jsonl        append-only reading sessions
@@ -24,17 +25,19 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
 
 use serde::Serialize;
+use serde_json::Value;
 
 use crate::error::Result;
 use crate::fsutil;
 use crate::library::fingerprint;
 use crate::settings::is_valid_device_id;
-use model::{BookRecord, Profile, Resurfaced, Session, Shelf, ShelvesDoc};
+use model::{BookRecord, Profile, Resurfaced, Session, Shelf, ShelvesDoc, Stamped};
 
 pub const STORE_DIR: &str = ".readlet";
 const DEVICES_DIR: &str = "devices";
 const BOOKS_DIR: &str = "books";
 const SESSIONS_DIR: &str = "sessions";
+const COVERS_DIR: &str = "covers";
 const OPEN_SESSION: &str = "open.json";
 
 /// What kind of reading data a changed file holds; used to tell the UI what to reload.
@@ -195,15 +198,26 @@ impl Store {
 
     /// One book's reading data, merged across devices.
     pub fn book(&self, fingerprint: &str) -> BookRecord {
+        self.with_book(fingerprint, BookRecord::clone)
+    }
+
+    /// One edited detail of a book (see `BookRecord::details`), without copying its whole record:
+    /// covers are served one request at a time.
+    pub fn book_detail(&self, fingerprint: &str, field: &str) -> Option<Stamped<Value>> {
+        self.with_book(fingerprint, |record| record.details.get(field).cloned())
+    }
+
+    fn with_book<T>(&self, fingerprint: &str, read: impl FnOnce(&BookRecord) -> T) -> T {
         let mut cache = self.books.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(record) = cache.as_ref().and_then(|c| c.get(fingerprint)) {
-            return record.clone();
+            return read(record);
         }
         let record = self.load_merged_book(fingerprint);
+        let result = read(&record);
         if let Some(cache) = cache.as_mut() {
-            cache.insert(fingerprint.to_owned(), record.clone());
+            cache.insert(fingerprint.to_owned(), record);
         }
-        record
+        result
     }
 
     /// Changes this device's copy of a book's record and returns the new merged record.
@@ -236,6 +250,45 @@ impl Store {
                 let merged = self.load_merged_book(fp);
                 cache.insert(fp.clone(), merged);
             }
+        }
+    }
+
+    // -- Chosen covers -------------------------------------------------------------------------
+
+    /// Where this device keeps a cover the reader chose: the path that goes in the book's record
+    /// (relative to the devices folder) and the file itself. `stamp` makes each choice a new file,
+    /// so a record never points at a file that's being replaced.
+    pub fn new_cover_path(&self, fingerprint: &str, stamp: i64) -> (String, PathBuf) {
+        let rel = format!("{}/{COVERS_DIR}/{fingerprint}-{stamp}.jpg", self.device_id);
+        let path = self.devices_dir.join(&rel);
+        (rel, path)
+    }
+
+    /// The file behind a cover path from a book's record. Records sync from other devices, so the
+    /// path is checked against the shape `new_cover_path` gives rather than trusted.
+    pub fn cover_file(&self, fingerprint: &str, rel: &str) -> Option<PathBuf> {
+        let [device, dir, file] = rel.split('/').collect::<Vec<_>>()[..] else {
+            return None;
+        };
+        let stamp = file
+            .strip_prefix(fingerprint)?
+            .strip_prefix('-')?
+            .strip_suffix(".jpg")?;
+        let valid = is_valid_device_id(device)
+            && dir == COVERS_DIR
+            && !stamp.is_empty()
+            && stamp.bytes().all(|b| b.is_ascii_digit());
+        valid.then(|| self.devices_dir.join(device).join(COVERS_DIR).join(file))
+    }
+
+    /// Deletes a cover this device chose earlier, once it's been replaced. Other devices' covers
+    /// are theirs to delete.
+    pub fn remove_own_cover(&self, fingerprint: &str, rel: &str) {
+        let own = rel
+            .strip_prefix(&self.device_id)
+            .is_some_and(|rest| rest.starts_with('/'));
+        if let Some(path) = self.cover_file(fingerprint, rel).filter(|_| own) {
+            let _ = fs::remove_file(path);
         }
     }
 
@@ -382,6 +435,10 @@ impl Store {
         match rest {
             [BOOKS_DIR, file] => {
                 let fp = file.strip_suffix(".json")?;
+                fingerprint::is_valid(fp).then(|| StoreChange::Book(fp.to_owned()))
+            }
+            [COVERS_DIR, file] => {
+                let fp = file.split_once('-')?.0;
                 fingerprint::is_valid(fp).then(|| StoreChange::Book(fp.to_owned()))
             }
             [SESSIONS_DIR, file] if file.ends_with(".jsonl") => Some(StoreChange::Sessions),
@@ -674,6 +731,34 @@ mod tests {
             None
         );
         assert_eq!(store.classify(&dir.path().join("book.epub")), None);
+        assert_eq!(
+            store.classify(&other.join("covers").join(format!("{FP}-17.jpg"))),
+            Some(StoreChange::Book(FP.into()))
+        );
+    }
+
+    #[test]
+    fn cover_paths_from_records_are_checked() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(dir.path(), LAPTOP, "Laptop").unwrap();
+        let (rel, path) = store.new_cover_path(FP, 42);
+        assert_eq!(store.cover_file(FP, &rel), Some(path));
+        let other = format!("{DESKTOP}/covers/{FP}-7.jpg");
+        assert!(store.cover_file(FP, &other).is_some());
+        for bad in [
+            format!("../{LAPTOP}/covers/{FP}-7.jpg"),
+            format!("{LAPTOP}/books/{FP}-7.jpg"),
+            format!("{LAPTOP}/covers/{FP}-x.jpg"),
+            format!("{LAPTOP}/covers/{FP}-7.png"),
+            format!("{LAPTOP}/covers/../../{FP}-7.jpg"),
+        ] {
+            assert_eq!(store.cover_file(FP, &bad), None, "{bad}");
+        }
+
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, b"jpeg").unwrap();
+        store.remove_own_cover(FP, &rel);
+        assert!(!path.exists());
     }
 
     #[test]

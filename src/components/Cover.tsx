@@ -13,14 +13,16 @@ interface CoverProps {
   /** In px, or `fill` to take the width of its container (phone grids). */
   width: number | 'fill'
   large?: boolean
+  /** An image to show instead of the book's own cover (a preview of one being chosen). */
+  src?: string
   className?: string
   style?: CSSProperties
 }
 
 /** A book cover at a 2:3 ratio: the real one if the book has it, a generated one otherwise. */
-export function Cover({ entry, title, authors, width, large, className, style }: CoverProps) {
+export function Cover({ entry, title, authors, width, large, src, className, style }: CoverProps) {
   const [failed, setFailed] = useState(false)
-  const hasImage = entry.coverVersion != null && !failed
+  const hasImage = (src != null || entry.coverVersion != null) && !failed
   const background = hasImage
     ? undefined
     : generatedCoverBackground(entry.fingerprint, entry.palette ?? FALLBACK_PALETTE)
@@ -40,7 +42,7 @@ export function Cover({ entry, title, authors, width, large, className, style }:
       {hasImage ? (
         <img
           className={styles.image}
-          src={coverUrl(entry.fingerprint, entry.coverVersion ?? 0)}
+          src={src ?? coverUrl(entry.fingerprint, entry.coverVersion ?? 0)}
           alt=""
           loading="lazy"
           decoding="async"

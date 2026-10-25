@@ -1,4 +1,5 @@
-import { FolderOpen, Plus, Search, SlidersVertical, X } from 'lucide-react'
+import { FolderOpen, Globe, Plus, Search, SlidersVertical, X } from 'lucide-react'
+import { AnimatePresence } from 'motion/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AppHeader } from '../components/AppHeader'
 import { AuraField } from '../components/AuraField'
@@ -10,6 +11,7 @@ import { useLibrary, useLibraryBooks } from '../state/library'
 import { useAuraFor } from '../theme/aura'
 import { pickAndAddBooks, pickLibraryFolder } from './actions'
 import { BookCollection } from './BookCollection'
+import { FindBooksSheet } from './FindBooksSheet'
 import { GoalCard } from './GoalCard'
 import { Hero } from './Hero'
 import { useIndexer } from './indexer'
@@ -36,6 +38,7 @@ export function LibraryView() {
   const setSettingsOpen = useApp((s) => s.setSettingsOpen)
   const [searching, setSearching] = useState(false)
   const [query, setQuery] = useState('')
+  const [findingOnline, setFindingOnline] = useState<string | null>(null)
   const hero = useMemo(() => heroBook(books), [books])
   useAuraFor(hero?.entry.palette)
 
@@ -85,9 +88,24 @@ export function LibraryView() {
             )}
             <IndexingStatus />
             <BookCollection books={books} query={query} />
+            {query.trim() && (
+              <button
+                type="button"
+                className={styles.searchOnline}
+                onClick={() => setFindingOnline(query.trim())}
+              >
+                <Globe size={17} strokeWidth={1.8} aria-hidden="true" />
+                Search online for “{query.trim()}”
+              </button>
+            )}
           </>
         )}
       </main>
+      <AnimatePresence>
+        {findingOnline !== null && (
+          <FindBooksSheet query={findingOnline} onClose={() => setFindingOnline(null)} />
+        )}
+      </AnimatePresence>
     </div>
   )
 }

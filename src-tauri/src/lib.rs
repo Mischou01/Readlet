@@ -4,12 +4,15 @@
 #[cfg(any(target_os = "android", test))]
 mod android;
 mod aura;
+mod catalog;
 mod commands;
 mod covers;
 mod error;
 mod fsutil;
 mod index;
 mod library;
+mod lookup;
+mod net;
 mod platform;
 mod protocol;
 mod settings;
@@ -79,9 +82,18 @@ pub fn run() {
             commands::choose_library,
             commands::rescan_library,
             commands::list_books,
+            commands::get_books,
             commands::books_needing_metadata,
             commands::set_book_metadata,
             commands::set_book_cover,
+            commands::set_book_details,
+            commands::reset_book_details,
+            commands::choose_book_cover,
+            commands::choose_book_cover_online,
+            commands::search_book_details,
+            commands::fetch_book_details,
+            commands::search_free_books,
+            commands::download_free_book,
             commands::add_books,
             commands::delete_books,
             commands::reveal_book,

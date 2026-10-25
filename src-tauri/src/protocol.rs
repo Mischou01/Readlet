@@ -1,19 +1,23 @@
 //! Custom URL schemes for the webview (docs/PLAN.md §3, D9):
 //!
 //! - `book://localhost/<fingerprint>` serves an indexed book's bytes to foliate-js.
-//! - `cover://localhost/<fingerprint>` serves its cached cover thumbnail.
+//! - `cover://localhost/<fingerprint>` serves its cover thumbnail: the one the reader chose, or
+//!   the one extracted from the book.
 //!
 //! Only fingerprints that are in the index resolve, so the webview gets no general filesystem
 //! access. (On Windows the URLs are `http://book.localhost/…` and `http://cover.localhost/…`.)
 
 use std::borrow::Cow;
+use std::path::PathBuf;
 
 use tauri::http::{Request, Response, StatusCode, header};
 use tauri::{AppHandle, Manager, Runtime, UriSchemeContext, UriSchemeResponder};
 
 use crate::covers::cover_path;
+use crate::index::CoverEdit;
 use crate::library::fingerprint;
 use crate::state::AppState;
+use crate::store::model::COVER_FIELD;
 
 pub const BOOK_SCHEME: &str = "book";
 pub const COVER_SCHEME: &str = "cover";
@@ -74,7 +78,8 @@ fn serve_cover<R: Runtime>(app: &AppHandle<R>, request: &Request<Vec<u8>>) -> Re
         return status(StatusCode::BAD_REQUEST);
     };
     let state = app.state::<AppState>();
-    match std::fs::read(cover_path(&state.paths.covers, fp)) {
+    let path = chosen_cover(&state, fp).unwrap_or_else(|| cover_path(&state.paths.covers, fp));
+    match std::fs::read(path) {
         Ok(bytes) => Response::builder()
             .status(StatusCode::OK)
             .header(header::CONTENT_TYPE, "image/jpeg")
@@ -85,6 +90,14 @@ fn serve_cover<R: Runtime>(app: &AppHandle<R>, request: &Request<Vec<u8>>) -> Re
             .unwrap_or_else(|_| status(StatusCode::INTERNAL_SERVER_ERROR)),
         Err(_) => status(StatusCode::NOT_FOUND),
     }
+}
+
+/// The thumbnail of a cover the reader chose for the book, if there is one.
+fn chosen_cover(state: &AppState, fp: &str) -> Option<PathBuf> {
+    let store = &state.library().ok()?.store;
+    let edit = store.book_detail(fp, COVER_FIELD)?;
+    let cover: CoverEdit = serde_json::from_value(edit.value).ok()?;
+    store.cover_file(fp, &cover.file)
 }
 
 fn status(code: StatusCode) -> Response<Body> {
