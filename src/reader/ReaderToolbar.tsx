@@ -18,7 +18,10 @@ interface ReaderToolbarProps {
   bottomBusy: boolean
   sheet: ReaderSheet | null
   bookmarked: boolean
-  /** Counts bookmarks added from here; each new one flies into Contents. */
+  /**
+   * Counts bookmarks added from here. On the desktop each new one flies into Contents; on phones,
+   * where Contents is at the other end of the screen, the button pops instead.
+   */
   bookmarksAdded: number
   readingAloud: boolean
   onBack: () => void
@@ -47,14 +50,21 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
       aria-pressed={bookmarked}
       onClick={props.onToggleBookmark}
     >
-      <span ref={bookmarkIcon} className={styles.toolIcon}>
+      <motion.span
+        key={phone ? bookmarksAdded : undefined}
+        ref={bookmarkIcon}
+        className={styles.toolIcon}
+        initial={phone && bookmarksAdded ? { scale: 1.45 } : false}
+        animate={{ scale: 1 }}
+        transition={{ type: 'spring', stiffness: 400, damping: 12 }}
+      >
         <Bookmark
           size={19}
           strokeWidth={1.8}
           fill={bookmarked ? 'currentColor' : 'none'}
           aria-hidden="true"
         />
-      </span>
+      </motion.span>
     </IconButton>
   )
   const tools = (
@@ -92,7 +102,7 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
       </IconButton>
     </>
   )
-  const flight = bookmarksAdded > 0 && (
+  const flight = !phone && bookmarksAdded > 0 && (
     <BookmarkFlight
       key={bookmarksAdded}
       from={bookmarkIcon}

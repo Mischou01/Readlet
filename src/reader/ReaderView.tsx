@@ -2,7 +2,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { ArrowLeft } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { AuraField } from '../components/AuraField'
 import { Button, IconButton } from '../components/Button'
 import { copyText } from '../lib/clipboard'
@@ -73,6 +73,8 @@ const BYTES_PER_LOCATION = 1500
 const CHROME_HIDE_MS = 2000
 const PROGRESS_SAVE_MS = 1200
 const MARGIN_WIDTHS = { narrow: 760, medium: 640, wide: 540 } as const
+/** Phones: the space above and below the text, inside the system bars' insets. */
+const PHONE_MARGIN = 20
 /** On a phone the text always fills the width, so the margin setting sets the space beside it. */
 const PHONE_GAPS = { narrow: '4%', medium: '6%', wide: '9%' } as const
 /** Two-page spreads only when there's room for two comfortable columns. */
@@ -588,7 +590,8 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
   }
 
   const [bookmarksAdded, setBookmarksAdded] = useState(0)
-  const toggleBookmark = async () => {
+  /** `from` is where it was asked for: the toolbar's button, or the page (its corner or ribbon). */
+  const toggleBookmark = async (from: 'toolbar' | 'page') => {
     if (pageBookmarks.length) {
       await removeBookmarks(pageBookmarks)
       return
@@ -605,7 +608,10 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
       fraction: location.fraction,
     })
     if (!added) return
-    setBookmarksAdded((n) => n + 1)
+    if (from === 'toolbar') setBookmarksAdded((n) => n + 1)
+    const { prefs, update } = usePreferences.getState()
+    if (prefs.bookmarkHintSeen) return
+    update({ bookmarkHintSeen: true })
     useToasts.getState().show({
       message: 'Bookmark added',
       action: {
@@ -737,7 +743,7 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
   const onTap = (zone: TapZone) => {
     if (closeOverlays()) return
     if (zone === 'bookmark') {
-      void toggleBookmark()
+      void toggleBookmark('page')
       return
     }
     if (zone === 'center' || readerPrefs.scrolled) {
@@ -761,8 +767,9 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
       maxInlineSize: MARGIN_WIDTHS[readerPrefs.margins],
       maxColumnCount:
         readerPrefs.spread && windowWidth - (sheet ? 412 : 0) >= SPREAD_MIN_WIDTH ? 2 : 1,
-      // Room for the footer below the text (and, on the desktop, the toolbar above it).
-      margin: phone ? 44 : 96,
+      // On the desktop, room for the toolbar above the text and the footer below it. Phones hide
+      // both while reading, so there the text only keeps a little clear of the screen's edges.
+      margin: phone ? PHONE_MARGIN : 96,
       gap: phone ? PHONE_GAPS[readerPrefs.margins] : '6%',
       animated: readerPrefs.animatePages && !matchMedia('(prefers-reduced-motion: reduce)').matches,
     }),
@@ -800,7 +807,12 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
   return (
     <div
       className={`${styles.page} ${sheet ? styles.withSheet : ''}`}
-      style={{ cursor: toolbarHidden ? 'none' : undefined }}
+      style={
+        {
+          cursor: toolbarHidden ? 'none' : undefined,
+          '--page-margin': `${layout.margin}px`,
+        } as CSSProperties
+      }
       onPointerMove={onPointerMove}
     >
       {readingAloud && <AuraField placement="bottom" />}
@@ -861,8 +873,10 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
         )}
       </div>
 
+      {/* On phones the toolbar's button shows the bookmark while the chrome is up, and the ribbon
+          would hang behind the status bar. */}
       <AnimatePresence>
-        {pageBookmarks.length > 0 && ready && (
+        {pageBookmarks.length > 0 && ready && (immersive || !phone) && (
           <motion.button
             key="ribbon"
             type="button"
@@ -872,8 +886,8 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
             initial={{ y: '-100%' }}
             animate={{ y: 0 }}
             exit={{ y: '-100%' }}
-            transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-            onClick={() => void toggleBookmark()}
+            transition={{ type: 'spring', stiffness: 260, damping: 18 }}
+            onClick={() => void toggleBookmark('page')}
           />
         )}
       </AnimatePresence>
@@ -907,7 +921,7 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
           readingAloud={readingAloud}
           onBack={() => navigate({ name: 'library' })}
           onSheet={(s) => setSheet((current) => (current === s ? null : s))}
-          onToggleBookmark={() => void toggleBookmark()}
+          onToggleBookmark={() => void toggleBookmark('toolbar')}
           onReadAloud={() => startReadAloud()}
           onHover={setHoveringChrome}
         />
