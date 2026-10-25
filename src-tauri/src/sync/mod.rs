@@ -88,6 +88,8 @@ enum Trigger {
     Full,
     /// A full pass unless one happened moments ago.
     Refresh,
+    /// Sent when a phone app goes to the background.
+    #[cfg_attr(desktop, allow(dead_code))]
     Push,
     Stop,
 }
@@ -188,6 +190,7 @@ impl SyncService {
 
     /// The app is going to the background (or coming back). Going, what changed goes up while
     /// it still can; back, a full pass catches up.
+    #[cfg(mobile)]
     pub fn set_foreground(&self, foreground: bool) {
         self.foreground.store(foreground, Ordering::SeqCst);
         self.send(if foreground {

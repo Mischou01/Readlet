@@ -16,8 +16,6 @@ use crate::error::{Error, Result};
 use crate::net::{self, Method, encode};
 
 const API: &str = "https://api.infomaniak.com";
-/// Where readers make the token.
-pub const TOKEN_PAGE: &str = "https://manager.infomaniak.com/v3/ng/accounts/token/list";
 /// The drive's top folder.
 const ROOT_DIR: u64 = 1;
 const MAX_ANSWER_BYTES: u64 = 16 * 1024 * 1024;

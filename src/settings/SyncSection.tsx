@@ -11,7 +11,7 @@ import { useSync } from '../state/sync'
 import { showError, useToasts } from '../state/toasts'
 import styles from './settings.module.css'
 
-/** Where Infomaniak's Manager lists API tokens (src-tauri/src/sync/kdrive.rs). */
+/** Where Infomaniak's Manager lists API tokens. */
 const TOKEN_PAGE = 'https://manager.infomaniak.com/v3/ng/accounts/token/list'
 
 /**
