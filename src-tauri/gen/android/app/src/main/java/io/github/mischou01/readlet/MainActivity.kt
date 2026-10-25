@@ -70,7 +70,7 @@ class MainActivity : TauriActivity() {
     private val callback: ActionMode.Callback,
     private val anchor: View,
   ) : ActionMode() {
-    private val menu: Menu by lazy { PopupMenu(anchor.context, anchor).menu }
+    private val emptyMenu: Menu by lazy { PopupMenu(anchor.context, anchor).menu }
     private var finished = false
 
     init {
@@ -83,7 +83,7 @@ class MainActivity : TauriActivity() {
       callback.onDestroyActionMode(this)
     }
 
-    override fun getMenu(): Menu = menu
+    override fun getMenu(): Menu = emptyMenu
     override fun getMenuInflater(): MenuInflater = MenuInflater(anchor.context)
     override fun invalidate() {}
     override fun setTitle(title: CharSequence?) {}
