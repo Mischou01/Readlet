@@ -47,7 +47,8 @@ fn agent(status_as_error: bool) -> ureq::Agent {
 pub const KDRIVE_API_HOST: &str = "api.infomaniak.com";
 
 /// Open Library and the Internet Archive servers its covers redirect to; Project Gutenberg;
-/// Infomaniak, whose kDrive downloads may come from its storage servers.
+/// Infomaniak, whose kDrive downloads redirect to its storage servers
+/// (`1-0-v3-12.download.kdrive.infomaniakusercontent.com`).
 fn allowed_host(host: &str) -> bool {
     let node_of = |domain: &str| {
         host.strip_suffix(domain).is_some_and(|node| {
@@ -56,6 +57,7 @@ fn allowed_host(host: &str) -> bool {
     };
     node_of(".us.archive.org")
         || node_of(".infomaniak.com")
+        || node_of(".download.kdrive.infomaniakusercontent.com")
         || matches!(
             host,
             "openlibrary.org" | "covers.openlibrary.org" | "archive.org" | "www.gutenberg.org"
@@ -73,7 +75,10 @@ fn checked_host(url: &str) -> Result<String> {
         .map_err(|_| Error::Network(format!("Not a valid address: {url}")))?;
     let host = uri.host().unwrap_or_default().to_owned();
     if uri.scheme_str() != Some("https") || !allowed_host(&host) {
-        return Err(Error::Network(format!("Refused to follow a link to {url}")));
+        // The host only: the rest of a download link is a signed address.
+        return Err(Error::Network(format!(
+            "Refused to follow a link to {host}"
+        )));
     }
     Ok(host)
 }
@@ -251,6 +256,12 @@ mod tests {
         assert!(allowed_host("kdrive-storage-1.infomaniak.com"));
         assert!(!allowed_host("infomaniak.com.evil.org"));
         assert!(!allowed_host("a.b.infomaniak.com"));
+        assert!(allowed_host(
+            "1-0-v3-12.download.kdrive.infomaniakusercontent.com"
+        ));
+        assert!(!allowed_host(
+            "evil.org.download.kdrive.infomaniakusercontent.com"
+        ));
     }
 
     #[test]

@@ -1052,6 +1052,17 @@ pub async fn disconnect_sync(app: AppHandle) -> Result<SyncStatus> {
     blocking(&app.clone(), move |state| state.sync.disconnect(&app)).await
 }
 
+/// Whether a kDrive token from before is kept on this device, to connect again with.
+#[tauri::command]
+pub async fn kdrive_token_saved(app: AppHandle) -> Result<bool> {
+    blocking(&app.clone(), move |state| state.sync.has_saved_token(&app)).await
+}
+
+#[tauri::command]
+pub async fn forget_kdrive_token(app: AppHandle) -> Result<()> {
+    blocking(&app.clone(), move |state| state.sync.forget_token(&app)).await
+}
+
 /// A full pass now (the reader pressed "Sync now").
 #[tauri::command]
 pub async fn sync_now(state: State<'_, AppState>) -> Result<SyncStatus> {

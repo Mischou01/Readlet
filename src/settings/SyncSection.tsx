@@ -119,11 +119,27 @@ function ConnectKDrive({ onDone }: { onDone: () => void }) {
   const [drive, setDrive] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // A token kept from before sync was last turned off: no need to make a new one.
+  const [saved, setSaved] = useState(false)
   const id = useId()
 
+  useEffect(() => {
+    api.kdriveTokenSaved().then(setSaved, () => setSaved(false))
+  }, [])
+
+  const forget = async () => {
+    try {
+      await api.forgetKDriveToken()
+      setSaved(false)
+    } catch (err) {
+      showError(toAppError(err).message)
+    }
+  }
+
+  const ready = (saved || token.trim() !== '') && drive.trim() !== ''
   const connect = async (e: FormEvent) => {
     e.preventDefault()
-    if (!token.trim() || !drive.trim() || busy) return
+    if (!ready || busy) return
     setBusy(true)
     setError(null)
     try {
@@ -139,22 +155,36 @@ function ConnectKDrive({ onDone }: { onDone: () => void }) {
   return (
     <form className={styles.connect} onSubmit={(e) => void connect(e)}>
       <ol className={styles.steps}>
+        {!saved && (
+          <li>
+            In Infomaniak’s Manager, make an API token with the “drive” scope (Profile › Developer ›
+            API tokens).{' '}
+            <button
+              type="button"
+              className={styles.link}
+              onClick={() =>
+                void openUrl(TOKEN_PAGE).catch((e: unknown) => showError(toAppError(e).message))
+              }
+            >
+              Open the token page
+              <ExternalLink size={13} strokeWidth={1.8} aria-hidden="true" />
+            </button>
+          </li>
+        )}
         <li>
-          In Infomaniak’s Manager, make an API token with the “drive” scope (Profile › Developer ›
-          API tokens).{' '}
-          <button
-            type="button"
-            className={styles.link}
-            onClick={() =>
-              void openUrl(TOKEN_PAGE).catch((e: unknown) => showError(toAppError(e).message))
-            }
-          >
-            Open the token page
-            <ExternalLink size={13} strokeWidth={1.8} aria-hidden="true" />
-          </button>
-        </li>
-        <li>
-          <label htmlFor={`${id}-token`}>Paste the token here:</label>
+          <label htmlFor={`${id}-token`}>
+            {saved ? (
+              <>
+                The token from before is kept on this device: leave this empty to use it, or paste a
+                new one.{' '}
+                <button type="button" className={styles.link} onClick={() => void forget()}>
+                  Forget it
+                </button>
+              </>
+            ) : (
+              'Paste the token here:'
+            )}
+          </label>
           <input
             id={`${id}-token`}
             className={fields.textInput}
@@ -194,12 +224,7 @@ function ConnectKDrive({ onDone }: { onDone: () => void }) {
         <Button size="small" variant="quiet" onClick={onDone}>
           Cancel
         </Button>
-        <Button
-          size="small"
-          variant="primary"
-          type="submit"
-          disabled={busy || !token.trim() || !drive.trim()}
-        >
+        <Button size="small" variant="primary" type="submit" disabled={busy || !ready}>
           {busy ? 'Connecting…' : 'Connect'}
         </Button>
       </div>
