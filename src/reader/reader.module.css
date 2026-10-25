@@ -808,8 +808,12 @@
     align-items: flex-start;
   }
 
+  /* It hangs from the top of the screen down to the text, as a ribbon from the top of a book. The
+     status bar it passes under is hidden whenever the ribbon shows. */
   .ribbon {
+    top: 0;
     right: 24px;
+    height: calc(var(--safe-top) + var(--page-margin) - 6px);
   }
 
   .footerText {

@@ -1,12 +1,12 @@
 package io.github.mischou01.readlet
 
-import android.graphics.Rect
 import android.os.Bundle
 import android.view.ActionMode
 import android.view.KeyEvent
 import android.view.Menu
-import android.view.MenuItem
+import android.view.MenuInflater
 import android.view.View
+import android.widget.PopupMenu
 import androidx.activity.enableEdgeToEdge
 
 class MainActivity : TauriActivity() {
@@ -46,35 +46,53 @@ class MainActivity : TauriActivity() {
 
   /**
    * Selecting text in a book opens Readlet's own bar (highlight, note, define, copy, read aloud),
-   * so the system's floating Copy / Share / Select all toolbar would cover it. It's kept for text
-   * fields, where cut and paste matter.
+   * so the system's floating Copy / Share / Select all toolbar would only cover it. The WebView
+   * gets a stand-in action mode that shows nothing instead. Text fields keep the real one, for cut
+   * and paste.
+   *
+   * The stand-in has to be returned from here: Activity's own implementation returns null for
+   * floating modes, and the window then builds the toolbar from the original callback, so
+   * wrapping the callback and passing it on changes nothing.
    */
   override fun onWindowStartingActionMode(callback: ActionMode.Callback, type: Int): ActionMode? {
-    if (type == ActionMode.TYPE_FLOATING && callback is ActionMode.Callback2) {
-      return super.onWindowStartingActionMode(QuietSelectionMenu(callback), type)
+    if (type == ActionMode.TYPE_FLOATING && currentFocus?.onCheckIsTextEditor() != true) {
+      val mode = HiddenActionMode(callback, window.decorView)
+      return if (callback.onCreateActionMode(mode, mode.menu)) mode else null
     }
     return super.onWindowStartingActionMode(callback, type)
   }
 
-  private class QuietSelectionMenu(private val inner: ActionMode.Callback2) : ActionMode.Callback2() {
-    override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean =
-      inner.onCreateActionMode(mode, menu).also { quiet(menu) }
+  /**
+   * A floating action mode without a toolbar. Finishing it reports back to the WebView as the real
+   * one would, so the selection and the window's bookkeeping end with it.
+   */
+  private class HiddenActionMode(
+    private val callback: ActionMode.Callback,
+    private val anchor: View,
+  ) : ActionMode() {
+    private val menu: Menu by lazy { PopupMenu(anchor.context, anchor).menu }
+    private var finished = false
 
-    override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean =
-      inner.onPrepareActionMode(mode, menu).also { quiet(menu) }
-
-    override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean =
-      inner.onActionItemClicked(mode, item)
-
-    override fun onDestroyActionMode(mode: ActionMode) = inner.onDestroyActionMode(mode)
-
-    override fun onGetContentRect(mode: ActionMode, view: View, outRect: Rect) =
-      inner.onGetContentRect(mode, view, outRect)
-
-    /** Empties the menu unless the selection is editable (it offers cut or paste). */
-    private fun quiet(menu: Menu) {
-      val editable = menu.findItem(android.R.id.cut) != null || menu.findItem(android.R.id.paste) != null
-      if (!editable) menu.clear()
+    init {
+      type = TYPE_FLOATING
     }
+
+    override fun finish() {
+      if (finished) return
+      finished = true
+      callback.onDestroyActionMode(this)
+    }
+
+    override fun getMenu(): Menu = menu
+    override fun getMenuInflater(): MenuInflater = MenuInflater(anchor.context)
+    override fun invalidate() {}
+    override fun setTitle(title: CharSequence?) {}
+    override fun setTitle(resId: Int) {}
+    override fun setSubtitle(subtitle: CharSequence?) {}
+    override fun setSubtitle(resId: Int) {}
+    override fun setCustomView(view: View?) {}
+    override fun getTitle(): CharSequence? = null
+    override fun getSubtitle(): CharSequence? = null
+    override fun getCustomView(): View? = null
   }
 }

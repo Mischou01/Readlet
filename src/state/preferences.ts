@@ -45,6 +45,8 @@ export interface Preferences {
   onlineDictionary: boolean | null
   /** Personal reading speed for "time left", learned from sessions (bytes of book per minute). */
   bytesPerMinute: number
+  /** The "Bookmark added, name it" hint has been shown; once is enough to learn it. */
+  bookmarkHintSeen: boolean
 }
 
 export const FONT_SIZES: readonly number[] = [15, 16, 17, 18, 19, 20, 22, 24, 26, 28]
@@ -72,6 +74,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   readAloud: { rate: 1, voice: null },
   onlineDictionary: null,
   bytesPerMinute: DEFAULT_BYTES_PER_MINUTE,
+  bookmarkHintSeen: false,
 }
 
 function oneOf<T extends string>(value: unknown, options: readonly T[], fallback: T): T {
@@ -131,6 +134,7 @@ export function normalizePreferences(raw: unknown): Preferences {
     },
     onlineDictionary: typeof r.onlineDictionary === 'boolean' ? r.onlineDictionary : null,
     bytesPerMinute: num(r.bytesPerMinute, 300, 10_000, d.bytesPerMinute),
+    bookmarkHintSeen: bool(r.bookmarkHintSeen, d.bookmarkHintSeen),
   }
 }
 
