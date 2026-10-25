@@ -742,7 +742,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = Store::open(dir.path(), LAPTOP, "Laptop").unwrap();
         let (rel, path) = store.new_cover_path(FP, 42);
-        assert_eq!(store.cover_file(FP, &rel), Some(path));
+        assert_eq!(store.cover_file(FP, &rel), Some(path.clone()));
         let other = format!("{DESKTOP}/covers/{FP}-7.jpg");
         assert!(store.cover_file(FP, &other).is_some());
         for bad in [
