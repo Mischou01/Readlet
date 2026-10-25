@@ -202,10 +202,18 @@ impl SyncService {
 
     /// Connects kDrive: checks the token on the drive, makes Readlet's folder in the reader's
     /// private folder, keeps the token and starts syncing. `drive` is the drive's address or
-    /// number.
+    /// number. An empty `token` means the one kept from before.
     pub fn connect_kdrive(&self, app: &AppHandle, token: &str, drive: &str) -> Result<SyncStatus> {
-        let token = token.trim();
-        if token.is_empty() || token.len() > 4096 || token.chars().any(char::is_whitespace) {
+        let saved;
+        let token = match token.trim() {
+            "" => {
+                saved = secret::get(app, secret::KDRIVE_TOKEN)?
+                    .ok_or_else(|| Error::invalid("Paste your kDrive token."))?;
+                saved.as_str()
+            }
+            token => token,
+        };
+        if token.len() > 4096 || token.chars().any(char::is_whitespace) {
             return Err(Error::invalid("That doesn't look like a kDrive token."));
         }
         let drive_id = kdrive::parse_drive_id(drive).ok_or_else(|| {
@@ -234,13 +242,13 @@ impl SyncService {
         Ok(self.status())
     }
 
-    /// Stops syncing and forgets the token. What's in the cloud folder and in the library stays.
+    /// Stops syncing. The token stays, for connecting again without making a new one, and so
+    /// does what's in the cloud folder and in the library.
     pub fn disconnect(&self, app: &AppHandle) -> Result<SyncStatus> {
         if let Some(worker) = lock(&self.worker).take() {
             let _ = worker.send(Trigger::Stop);
         }
         *lock(&self.token) = None;
-        secret::delete(app, secret::KDRIVE_TOKEN)?;
         let state = app.state::<AppState>();
         {
             let mut settings = state.settings();
@@ -250,6 +258,20 @@ impl SyncService {
         let _ = std::fs::remove_file(&self.state_path);
         self.update_status(app, |status| *status = SyncStatus::default());
         Ok(self.status())
+    }
+
+    /// Whether this device keeps a kDrive token from before.
+    pub fn has_saved_token(&self, app: &AppHandle) -> Result<bool> {
+        Ok(secret::get(app, secret::KDRIVE_TOKEN)?.is_some())
+    }
+
+    /// Removes the kept token. Only while sync is off: it's in use otherwise.
+    pub fn forget_token(&self, app: &AppHandle) -> Result<()> {
+        if app.state::<AppState>().settings().sync.is_some() {
+            return Err(Error::invalid("Turn sync off first."));
+        }
+        *lock(&self.token) = None;
+        secret::delete(app, secret::KDRIVE_TOKEN)
     }
 
     fn token(&self, app: &AppHandle) -> Result<String> {
@@ -355,7 +377,8 @@ fn work(app: &AppHandle, triggers: &Receiver<Trigger>) {
             Ok(Trigger::Full) => Some(Pass::Full),
             Ok(Trigger::Refresh) => {
                 let fresh = last_full.is_some_and(|at| at.elapsed() < FRESH_ENOUGH);
-                (!fresh && !blocked).then_some(Pass::Full)
+                // While failing, the backoff decides: "Sync now" still goes ahead.
+                (!fresh && !blocked && failures == 0).then_some(Pass::Full)
             }
             Ok(Trigger::Push) => Some(Pass::Push),
             Err(RecvTimeoutError::Timeout) => {

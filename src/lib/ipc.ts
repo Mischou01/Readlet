@@ -146,6 +146,9 @@ export const api = {
   connectKDrive: (token: string, drive: string) =>
     invoke<SyncStatus>('connect_kdrive', { token, drive }),
   disconnectSync: () => invoke<SyncStatus>('disconnect_sync'),
+  /** Whether a kDrive token from before is kept on this device. */
+  kdriveTokenSaved: () => invoke<boolean>('kdrive_token_saved'),
+  forgetKDriveToken: () => invoke<void>('forget_kdrive_token'),
   syncNow: () => invoke<SyncStatus>('sync_now'),
   /** A full pass unless one just happened (opening a book). */
   syncSoon: () => invoke<void>('sync_soon'),

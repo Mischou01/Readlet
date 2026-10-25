@@ -131,6 +131,8 @@ pub fn run() {
             commands::sync_status,
             commands::connect_kdrive,
             commands::disconnect_sync,
+            commands::kdrive_token_saved,
+            commands::forget_kdrive_token,
             commands::sync_now,
             commands::sync_soon,
             tts::tts_voices,
