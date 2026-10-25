@@ -9,18 +9,27 @@ import { Menu, MenuButton, type MenuAnchor, type MenuEntry } from '../components
 import { ProgressBar } from '../components/Progress'
 import { formatAuthors, formatDay, formatPercent, formatSeries, pluralize } from '../lib/format'
 import { newId } from '../lib/ids'
-import { isAndroid, usePhoneLayout } from '../lib/platform'
-import type { ReadingStatus, Shelf } from '../lib/types'
+import { usePhoneLayout } from '../lib/platform'
+import type { Shelf } from '../lib/types'
 import { useApp } from '../state/app'
 import { useVisibleShelves } from '../state/library'
 import { usePreferences, type LibrarySort, type LibraryTab } from '../state/preferences'
 import { useToasts } from '../state/toasts'
-import { openBook, revealBook } from './actions'
+import { openBook } from './actions'
+import {
+  STATUS_LABELS,
+  bookMenuItems,
+  moreItems,
+  shelfItems as shelfMenuItems,
+  statusItems,
+  type BookMenuContext,
+} from './bookMenus'
 import styles from './library.module.css'
 import { filterBooks, groupBySeries, seriesAnchor, sortBooks, type LibraryBook } from './model'
-import { useBookSelection, type BookSelection } from './selection'
+import { useBookSelection, useLongPressSelect, type BookSelection } from './selection'
 import { SelectionBar } from './SelectionBar'
-import { deleteShelf, saveShelf, setStatusOf, shelfHasAll, toggleShelf } from './shelves'
+import { SeriesDialog } from './SeriesDialog'
+import { deleteShelf, saveShelf } from './shelves'
 
 const TABS: { id: LibraryTab; label: string }[] = [
   { id: 'all', label: 'All' },
@@ -37,12 +46,6 @@ const SORTS: { id: LibrarySort; label: string }[] = [
   { id: 'added', label: 'Recently added' },
 ]
 
-const STATUS_LABELS: Record<ReadingStatus, string> = {
-  reading: 'Reading',
-  toRead: 'To read',
-  finished: 'Finished',
-}
-
 /** What a new shelf starts with, and whether it was made from a selection. */
 interface ShelfDialogState {
   shelf: Shelf | null
@@ -57,6 +60,7 @@ export function BookCollection({ books, query }: { books: LibraryBook[]; query: 
   const shelf = shelves.find((s) => s.id === shelfId) ?? null
   const [menu, setMenu] = useState<{ book: LibraryBook; anchor: MenuAnchor } | null>(null)
   const [shelfDialog, setShelfDialog] = useState<ShelfDialogState | null>(null)
+  const [seriesDialog, setSeriesDialog] = useState<string[] | null>(null)
 
   const counts = useMemo(() => {
     const c: Record<LibraryTab, number> = { all: 0, reading: 0, toRead: 0, finished: 0 }
@@ -79,6 +83,7 @@ export function BookCollection({ books, query }: { books: LibraryBook[]; query: 
     return grouped.some((g) => g.series) ? grouped : null
   }, [sort, visible])
   const selection = useBookSelection(visibleIds)
+  const longPress = useLongPressSelect(selection)
 
   const shelfItems: MenuEntry[] = [
     {
@@ -114,8 +119,9 @@ export function BookCollection({ books, query }: { books: LibraryBook[]; query: 
 
   const openMenu = (book: LibraryBook, e: MouseEvent) => {
     e.preventDefault()
+    // A context menu from the keyboard has no pointer position: it opens by the book instead.
     const anchor =
-      e.type === 'contextmenu'
+      e.type === 'contextmenu' && (e.clientX || e.clientY)
         ? { x: e.clientX, y: e.clientY }
         : (e.currentTarget as HTMLElement).getBoundingClientRect()
     setMenu({ book, anchor })
@@ -131,16 +137,27 @@ export function BookCollection({ books, query }: { books: LibraryBook[]; query: 
     }
   }
 
-  // The menu of a book that's part of a selection acts on the whole selection.
-  const menuBooks =
-    menu && selection.selected.length > 1 && selection.has(menu.book.fingerprint)
+  const menuContext = (done?: () => void): BookMenuContext => ({
+    books,
+    shelves,
+    selecting: selection.selecting,
+    select: selection.start,
+    newShelf: (fingerprints) => setShelfDialog({ shelf: null, books: fingerprints }),
+    putInSeries: setSeriesDialog,
+    done,
+  })
+  // The menu of a selected book acts on the whole selection, and ends it.
+  const menuTargets =
+    menu && selection.has(menu.book.fingerprint)
       ? selection.selected
-      : null
+      : [menu?.book.fingerprint ?? '']
+  const selectionContext = menuContext(selection.exit)
 
   const renderBooks = (list: LibraryBook[], inSeries: boolean) => (
     <ul
       className={layout === 'grid' ? styles.grid : styles.list}
       data-selecting={selection.selecting || undefined}
+      {...longPress}
     >
       {list.map((book) => {
         const Item = layout === 'grid' ? BookTile : BookRow
@@ -247,21 +264,14 @@ export function BookCollection({ books, query }: { books: LibraryBook[]; query: 
           anchor={menu.anchor}
           align="end"
           label={
-            menuBooks
-              ? `Actions for ${pluralize(menuBooks.length, 'book')}`
+            menuTargets.length > 1
+              ? `Actions for ${pluralize(menuTargets.length, 'book')}`
               : `Actions for ${menu.book.title}`
           }
-          items={
-            menuBooks
-              ? selectionMenuItems(menuBooks, books, shelves, {
-                  newShelf: () => setShelfDialog({ shelf: null, books: menuBooks }),
-                  done: selection.exit,
-                })
-              : bookMenuItems(menu.book, shelves, {
-                  newShelf: () => setShelfDialog({ shelf: null, books: [menu.book.fingerprint] }),
-                  select: () => selection.start(menu.book.fingerprint),
-                })
-          }
+          items={bookMenuItems(
+            menuTargets,
+            selection.has(menu.book.fingerprint) ? selectionContext : menuContext(),
+          )}
           onClose={() => setMenu(null)}
         />
       )}
@@ -275,6 +285,13 @@ export function BookCollection({ books, query }: { books: LibraryBook[]; query: 
           onClose={() => setShelfDialog(null)}
         />
       )}
+      {seriesDialog && (
+        <SeriesDialog
+          fingerprints={seriesDialog}
+          onSaved={selection.exit}
+          onClose={() => setSeriesDialog(null)}
+        />
+      )}
       <AnimatePresence>
         {selection.selecting && (
           <SelectionBar
@@ -282,15 +299,9 @@ export function BookCollection({ books, query }: { books: LibraryBook[]; query: 
             total={visible.length}
             onSelectAll={selection.selectAll}
             onDone={selection.exit}
-            shelfItems={shelfMenuItems(selection.selected, shelves, {
-              newShelf: () => setShelfDialog({ shelf: null, books: selection.selected }),
-              done: selection.exit,
-            })}
-            statusItems={statusMenuItems(
-              selection.selected,
-              commonStatus(selection.selected, books),
-              selection.exit,
-            )}
+            shelfItems={shelfMenuItems(selection.selected, selectionContext)}
+            statusItems={statusItems(selection.selected, selectionContext)}
+            moreItems={moreItems(selection.selected, selectionContext)}
             onDelete={() =>
               useApp
                 .getState()
@@ -359,6 +370,7 @@ function BookTile({ book, inSeries, selection, onClick, onMenu }: ItemProps) {
   return (
     <li
       className={styles.tile}
+      data-fingerprint={book.fingerprint}
       data-selected={selected || undefined}
       onContextMenu={(e) => onMenu(book, e)}
     >
@@ -409,6 +421,7 @@ function BookRow({ book, inSeries, selection, onClick, onMenu }: ItemProps) {
   return (
     <li
       className={styles.row}
+      data-fingerprint={book.fingerprint}
       data-selected={selected || undefined}
       onContextMenu={(e) => onMenu(book, e)}
     >
@@ -456,121 +469,6 @@ function BookRow({ book, inSeries, selection, onClick, onMenu }: ItemProps) {
       {selection.selecting && <SelectToggle book={book} selection={selection} />}
     </li>
   )
-}
-
-interface MenuActions {
-  newShelf: () => void
-  /** Called once a change is saved (ends a selection). */
-  done?: () => void
-}
-
-function statusMenuItems(
-  fingerprints: string[],
-  status: ReadingStatus | null,
-  done?: () => void,
-): MenuEntry[] {
-  const entry = (s: ReadingStatus): MenuEntry => ({
-    id: s,
-    label: STATUS_LABELS[s],
-    checked: status === s,
-    onSelect: () => void setStatusOf(fingerprints, s).then((ok) => ok && done?.()),
-  })
-  return [entry('reading'), entry('toRead'), entry('finished')]
-}
-
-function shelfMenuItems(fingerprints: string[], shelves: Shelf[], actions: MenuActions) {
-  return [
-    ...shelves.map((shelf): MenuEntry => ({
-      id: `shelf-${shelf.id}`,
-      label: shelf.name,
-      checked: shelfHasAll(shelf, fingerprints),
-      onSelect: () => void toggleShelf(shelf, fingerprints).then((ok) => ok && actions.done?.()),
-    })),
-    ...(shelves.length ? [{ separator: true, id: 's-new-shelf' } as const] : []),
-    {
-      id: 'new-shelf',
-      label: fingerprints.length > 1 ? 'New shelf with these books…' : 'New shelf…',
-      onSelect: actions.newShelf,
-    },
-  ]
-}
-
-/** The status shared by all the books, if they have one in common. */
-function commonStatus(fingerprints: string[], books: LibraryBook[]): ReadingStatus | null {
-  const statuses = new Set(
-    books.filter((b) => fingerprints.includes(b.fingerprint)).map((b) => b.status),
-  )
-  const [only] = statuses
-  return statuses.size === 1 && only ? only : null
-}
-
-function bookMenuItems(
-  book: LibraryBook,
-  shelves: Shelf[],
-  actions: MenuActions & { select: () => void },
-): MenuEntry[] {
-  const navigate = useApp.getState().navigate
-  const app = useApp.getState()
-  return [
-    { id: 'open', label: 'Open', onSelect: () => openBook(book) },
-    { id: 'details', label: 'About this book', onSelect: () => app.showDetails(book.fingerprint) },
-    ...(book.highlights.length
-      ? [
-          {
-            id: 'hl',
-            label: 'Highlights',
-            onSelect: () => navigate({ name: 'highlights', book: book.fingerprint }),
-          },
-        ]
-      : []),
-    // Android has no file manager to hand a file to.
-    ...(isAndroid
-      ? []
-      : [
-          {
-            id: 'reveal',
-            label: 'Show in folder',
-            onSelect: () => void revealBook(book.fingerprint),
-          },
-        ]),
-    { id: 'select', label: 'Select', onSelect: actions.select },
-    { separator: true, id: 's1' },
-    { heading: 'Mark as', id: 'h-status' },
-    ...statusMenuItems([book.fingerprint], book.status),
-    { separator: true, id: 's2' },
-    { heading: 'Shelves', id: 'h-shelves' },
-    ...shelfMenuItems([book.fingerprint], shelves, actions),
-    { separator: true, id: 's3' },
-    {
-      id: 'delete',
-      label: 'Delete…',
-      danger: true,
-      onSelect: () => app.confirmDelete({ fingerprints: [book.fingerprint] }),
-    },
-  ]
-}
-
-/** The menu for several selected books. */
-function selectionMenuItems(
-  fingerprints: string[],
-  books: LibraryBook[],
-  shelves: Shelf[],
-  actions: Required<MenuActions>,
-): MenuEntry[] {
-  return [
-    { heading: 'Mark as', id: 'h-status' },
-    ...statusMenuItems(fingerprints, commonStatus(fingerprints, books), actions.done),
-    { separator: true, id: 's2' },
-    { heading: 'Shelves', id: 'h-shelves' },
-    ...shelfMenuItems(fingerprints, shelves, actions),
-    { separator: true, id: 's3' },
-    {
-      id: 'delete',
-      label: `Delete ${pluralize(fingerprints.length, 'book')}…`,
-      danger: true,
-      onSelect: () => useApp.getState().confirmDelete({ fingerprints, onDeleted: actions.done }),
-    },
-  ]
 }
 
 /** Renames `shelf`, or creates a shelf holding `books`. */

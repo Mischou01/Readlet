@@ -1,5 +1,5 @@
 import { Globe, ImagePlus } from 'lucide-react'
-import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Button } from '../components/Button'
 import { Cover } from '../components/Cover'
 import { FieldLabel } from '../components/Fields'
@@ -9,11 +9,20 @@ import { api, toAppError } from '../lib/ipc'
 import { bookAuthors, bookTitle } from '../lib/text'
 import type { BookDetailsPatch, BookEntry } from '../lib/types'
 import { openLibraryCover } from '../lib/urls'
-import { useLibrary } from '../state/library'
+import { useLibrary, useLibraryBooks } from '../state/library'
 import { showError, useToasts } from '../state/toasts'
 import { detailsForm, detailsPatch, parseSeriesIndex, type DetailsForm } from './details'
 import styles from './details.module.css'
 import { FindDetails } from './FindDetails'
+import {
+  authorsToSave,
+  knownAuthors,
+  knownSeries,
+  seriesToSave,
+  suggestAuthors,
+  suggestSeries,
+} from './names'
+import { NameSuggestions } from './NameSuggestions'
 
 /** A cover chosen in the form, saved with the rest of it. */
 type PendingCover =
@@ -55,8 +64,22 @@ export function EditDetails({ entry, onDone }: { entry: BookEntry; onDone: () =>
   const [saving, setSaving] = useState(false)
   const id = useId()
   const fileInput = useRef<HTMLInputElement>(null)
+  const books = useLibraryBooks()
+  const others = useMemo(
+    () => books.filter((b) => b.fingerprint !== entry.fingerprint).map((b) => b.entry),
+    [books, entry.fingerprint],
+  )
+  const series = useMemo(() => knownSeries(others), [others])
+  const authors = useMemo(() => knownAuthors(others), [others])
+  // Authors are suggested for the line the caret is on.
+  const [authorLine, setAuthorLine] = useState(0)
   const indexInvalid = Number.isNaN(parseSeriesIndex(form.seriesIndex))
-  const patch = detailsPatch(initial, form)
+  // Names typed differently from the library's spelling of them join those.
+  const patch = detailsPatch(initial, {
+    ...form,
+    series: form.series === initial.series ? form.series : seriesToSave(form.series, series),
+    authors: form.authors === initial.authors ? form.authors : authorsToSave(form.authors, authors),
+  })
   const dirty = Object.keys(patch).length > 0 || cover !== null
 
   useEffect(
@@ -136,6 +159,14 @@ export function EditDetails({ entry, onDone }: { entry: BookEntry; onDone: () =>
           rows={options.multiline ? (name === 'authors' ? 2 : 6) : undefined}
           value={form[name]}
           onChange={(e) => setForm((f) => ({ ...f, [name]: e.target.value }))}
+          onSelect={
+            name === 'authors'
+              ? (e) => {
+                  const { value, selectionStart } = e.currentTarget
+                  setAuthorLine(value.slice(0, selectionStart ?? 0).split('\n').length - 1)
+                }
+              : undefined
+          }
         />
         {options.hint && (
           <p className={styles.hint} id={`${id}-${name}-hint`}>
@@ -218,10 +249,39 @@ export function EditDetails({ entry, onDone }: { entry: BookEntry; onDone: () =>
             <p className={styles.hint}>Looks the book up on Open Library.</p>
           </div>
           {field('title', 'Title')}
-          {field('authors', 'Authors', { multiline: true, hint: 'One per line' })}
-          <div className={styles.pair}>
-            {field('series', 'Series')}
-            {field('seriesIndex', 'Number', { inputMode: 'decimal', invalid: indexInvalid })}
+          <div>
+            {field('authors', 'Authors', { multiline: true, hint: 'One per line' })}
+            <NameSuggestions
+              label="Authors in your library"
+              names={suggestAuthors(form.authors.split('\n')[authorLine] ?? '', authors)}
+              onPick={(name) =>
+                setForm((f) => ({
+                  ...f,
+                  authors: f.authors
+                    .split('\n')
+                    .map((line, i) => (i === authorLine ? name : line))
+                    .join('\n'),
+                }))
+              }
+            />
+          </div>
+          <div>
+            <div className={styles.pair}>
+              {field('series', 'Series')}
+              {field('seriesIndex', 'Number', { inputMode: 'decimal', invalid: indexInvalid })}
+            </div>
+            <NameSuggestions
+              label="Series in your library"
+              names={suggestSeries(form.series, series).map((s) => s.name)}
+              onPick={(name) =>
+                setForm((f) => ({
+                  ...f,
+                  series: name,
+                  seriesIndex:
+                    f.seriesIndex.trim() || String(series.find((s) => s.name === name)?.next ?? ''),
+                }))
+              }
+            />
           </div>
           {field('description', 'Description', { multiline: true })}
           <div className={styles.pair}>

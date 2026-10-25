@@ -67,7 +67,7 @@ const bySeries = (a: LibraryBook, b: LibraryBook) =>
   (a.entry.seriesIndex ?? Infinity) - (b.entry.seriesIndex ?? Infinity)
 
 /** Books name the same series with different spacing or capitals; this is what they share. */
-function seriesKey(series: string | null): string {
+export function seriesKey(series: string | null): string {
   return titleSortKey((series ?? '').replace(/\s+/g, ' ').trim()).toLocaleLowerCase()
 }
 

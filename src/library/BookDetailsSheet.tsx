@@ -54,7 +54,9 @@ export function BookDetailsSheet({ fingerprint }: { fingerprint: string }) {
   const close = () => useApp.getState().showDetails(null)
   const cover = useRef<HTMLButtonElement>(null)
   const [unfolded, setUnfolded] = useState(false)
-  const [editing, setEditing] = useState(false)
+  // Opened to edit, the sheet closes when the edit is done: there was no "About" page before it.
+  const [editedOnly] = useState(() => useApp.getState().editingDetails)
+  const [editing, setEditing] = useState(editedOnly)
   const description = book?.entry.description
   const paragraphs = useMemo(
     () => (description ? htmlToParagraphs(description) : []),
@@ -81,7 +83,7 @@ export function BookDetailsSheet({ fingerprint }: { fingerprint: string }) {
   ]
 
   if (editing) {
-    return <EditDetails entry={entry} onDone={() => setEditing(false)} />
+    return <EditDetails entry={entry} onDone={editedOnly ? close : () => setEditing(false)} />
   }
 
   return (

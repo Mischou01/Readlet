@@ -1,4 +1,4 @@
-import { ChevronDown, LibraryBig, Trash2, X } from 'lucide-react'
+import { ChevronDown, LibraryBig, MoreHorizontal, Trash2, X } from 'lucide-react'
 import { motion } from 'motion/react'
 import { IconButton } from '../components/Button'
 import { MenuButton, type MenuEntry } from '../components/Menu'
@@ -10,6 +10,8 @@ interface SelectionBarProps {
   total: number
   shelfItems: MenuEntry[]
   statusItems: MenuEntry[]
+  /** The rest of the selection's actions (`moreItems`). */
+  moreItems: MenuEntry[]
   onSelectAll: () => void
   onDelete: () => void
   onDone: () => void
@@ -17,7 +19,7 @@ interface SelectionBarProps {
 
 /** Floats at the bottom of the library while books are being selected. */
 export function SelectionBar(props: SelectionBarProps) {
-  const { count, total, shelfItems, statusItems, onSelectAll, onDelete, onDone } = props
+  const { count, total, shelfItems, statusItems, moreItems, onSelectAll, onDelete, onDone } = props
   return (
     <motion.div
       role="toolbar"
@@ -30,7 +32,7 @@ export function SelectionBar(props: SelectionBarProps) {
       transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
     >
       <span className={styles.selectionCount} aria-live="polite">
-        {count ? `${pluralize(count, 'book')} selected` : 'Click books to select them'}
+        {count ? `${pluralize(count, 'book')} selected` : 'Choose books to select them'}
       </span>
       <MenuButton
         label="Add to shelf"
@@ -50,6 +52,15 @@ export function SelectionBar(props: SelectionBarProps) {
       >
         Mark as
         <ChevronDown size={16} strokeWidth={1.8} aria-hidden="true" />
+      </MenuButton>
+      <MenuButton
+        label={count === 1 ? 'More for the selected book' : 'More for the selected books'}
+        title="More"
+        className={`${styles.selectionAction} ${styles.selectionMore}`}
+        items={moreItems}
+        disabled={count === 0}
+      >
+        <MoreHorizontal size={18} strokeWidth={1.8} aria-hidden="true" />
       </MenuButton>
       <IconButton
         label={count === 1 ? 'Delete the selected book' : 'Delete the selected books'}
