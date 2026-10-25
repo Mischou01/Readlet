@@ -47,6 +47,15 @@ impl Library {
         *self.watcher.lock().unwrap_or_else(|e| e.into_inner()) = watcher;
     }
 
+    /// Whether changes to the folder are being reported as they happen.
+    #[cfg(desktop)]
+    pub fn is_watching(&self) -> bool {
+        self.watcher
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .is_some()
+    }
+
     /// Turns an indexed relative path into an absolute one, refusing anything that could point
     /// outside the library.
     pub fn resolve(&self, rel_path: &str) -> Result<PathBuf> {

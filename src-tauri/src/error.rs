@@ -23,6 +23,12 @@ pub enum Error {
     /// A site couldn't be reached, or answered with something unusable (see `net`).
     #[error("{0}")]
     Network(String),
+    /// A service turned down the reader's credentials (a kDrive token that was revoked, say).
+    #[error("{0}")]
+    Unauthorized(String),
+    /// The system's keyring (or Android's keystore) couldn't keep or give back a secret.
+    #[error("{0}")]
+    Secrets(String),
     /// A call into the Android side of the app failed.
     #[cfg(mobile)]
     #[error("{0}")]
@@ -58,6 +64,8 @@ impl Error {
             Self::Tts(_) => "tts",
             Self::Unsupported(_) => "unsupported",
             Self::Network(_) => "network",
+            Self::Unauthorized(_) => "unauthorized",
+            Self::Secrets(_) => "secrets",
             #[cfg(mobile)]
             Self::Native(_) => "native",
             Self::Io(_) => "io",

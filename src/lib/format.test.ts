@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   dayKey,
   formatAgo,
+  formatSince,
   formatDay,
   formatIdentifier,
   formatMinutes,
@@ -97,5 +98,16 @@ describe('text', () => {
     expect(matchesQuery('Emma', '  ')).toBe(true)
     expect(matchesQuery('Emma', 'dune')).toBe(false)
     expect(titleSortKey('The Waves')).toBe('waves')
+  })
+})
+
+describe('formatSince', () => {
+  const now = new Date(2026, 9, 25, 15, 30).getTime()
+
+  it('counts minutes, then names the day', () => {
+    expect(formatSince(now - 20_000, now)).toBe('just now')
+    expect(formatSince(now - 5 * 60_000, now)).toBe('5 min ago')
+    expect(formatSince(new Date(2026, 9, 25, 9, 5).getTime(), now)).toMatch(/^today at /)
+    expect(formatSince(new Date(2026, 9, 24, 9, 5).getTime(), now)).toMatch(/^yesterday at /)
   })
 })

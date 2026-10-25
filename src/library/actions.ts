@@ -3,7 +3,7 @@
 import { open } from '@tauri-apps/plugin-dialog'
 import { api, toAppError } from '../lib/ipc'
 import { isAndroid, pickFolder } from '../lib/platform'
-import { pluralize } from '../lib/format'
+import { formatList, pluralize } from '../lib/format'
 import { bookTitle } from '../lib/text'
 import { useApp, type OpeningCover } from '../state/app'
 import { expectAddedFiles, expectDeleted, useLibrary } from '../state/library'
@@ -101,6 +101,8 @@ interface OpenableBook {
   fingerprint: string
   title: string
   entry: { drm: boolean }
+  /** The devices that have it, when this one doesn't. */
+  elsewhere?: string[]
 }
 
 /** Where a cover is on screen and what it shows, so the reader can grow it into the page. */
@@ -128,6 +130,13 @@ export function openBook(
 ) {
   const { from, ...view } = options
   const app = useApp.getState()
+  if (book.elsewhere) {
+    app.setNotice({
+      title: 'This book is on another device',
+      message: `“${book.title}” is on ${formatList(book.elsewhere)}, but not on this one. Put the book’s file in this device’s books folder to read it here: your place, highlights and notes will be waiting.`,
+    })
+    return
+  }
   if (book.entry.drm) {
     app.setNotice({
       title: 'This book is locked',

@@ -1,4 +1,12 @@
-import { Check, ChevronDown, LayoutGrid, List, MoreHorizontal } from 'lucide-react'
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  LayoutGrid,
+  List,
+  MonitorSmartphone,
+  MoreHorizontal,
+} from 'lucide-react'
 import { AnimatePresence } from 'motion/react'
 import { useMemo, useState, type MouseEvent } from 'react'
 import { Button } from '../components/Button'
@@ -25,7 +33,14 @@ import {
   type BookMenuContext,
 } from './bookMenus'
 import styles from './library.module.css'
-import { filterBooks, groupBySeries, seriesAnchor, sortBooks, type LibraryBook } from './model'
+import {
+  elsewhereLabel,
+  filterBooks,
+  groupBySeries,
+  seriesAnchor,
+  sortBooks,
+  type LibraryBook,
+} from './model'
 import { useBookSelection, useLongPressSelect, type BookSelection } from './selection'
 import { SelectionBar } from './SelectionBar'
 import { SeriesDialog } from './SeriesDialog'
@@ -52,9 +67,21 @@ interface ShelfDialogState {
   books?: string[]
 }
 
-/** The tabs, sort and view controls, and the books themselves. */
-export function BookCollection({ books, query }: { books: LibraryBook[]; query: string }) {
-  const { tab, sort, layout, shelf: shelfId } = usePreferences((s) => s.prefs.library)
+/**
+ * The tabs, sort and view controls, and the books themselves: this device's, then the ones only
+ * other devices have (`elsewhere`), which can be looked at but not opened here.
+ */
+export function BookCollection({
+  books,
+  elsewhere,
+  query,
+}: {
+  books: LibraryBook[]
+  elsewhere: LibraryBook[]
+  query: string
+}) {
+  const library = usePreferences((s) => s.prefs.library)
+  const { tab, sort, layout, shelf: shelfId, elsewhereOpen } = library
   const update = usePreferences((s) => s.update)
   const shelves = useVisibleShelves()
   const shelf = shelves.find((s) => s.id === shelfId) ?? null
@@ -76,6 +103,13 @@ export function BookCollection({ books, query }: { books: LibraryBook[]; query: 
     [books, tab, query, shelf, sort],
   )
   const visibleIds = useMemo(() => visible.map((b) => b.fingerprint), [visible])
+  const visibleElsewhere = useMemo(
+    () => sortBooks(filterBooks(elsewhere, { tab, query, shelf }), sort),
+    [elsewhere, tab, query, shelf, sort],
+  )
+  // A search looks everywhere, folded or not.
+  const searching = query.trim() !== ''
+  const showElsewhere = elsewhereOpen || searching
   // Sorted by series, books gather under their series' names (if any of them has one).
   const groups = useMemo(() => {
     if (sort !== 'series') return null
@@ -129,7 +163,9 @@ export function BookCollection({ books, query }: { books: LibraryBook[]; query: 
 
   // Ctrl/Cmd-click and Shift-click select (as in a file manager); while selecting, clicks do.
   const onBookClick = (book: LibraryBook, e: MouseEvent<HTMLElement>) => {
-    if (selection.selecting || e.ctrlKey || e.metaKey || e.shiftKey) {
+    if (book.elsewhere) {
+      useApp.getState().showDetails(book.fingerprint)
+    } else if (selection.selecting || e.ctrlKey || e.metaKey || e.shiftKey) {
       e.preventDefault()
       selection.click(book.fingerprint, { range: e.shiftKey })
     } else {
@@ -138,7 +174,7 @@ export function BookCollection({ books, query }: { books: LibraryBook[]; query: 
   }
 
   const menuContext = (done?: () => void): BookMenuContext => ({
-    books,
+    books: [...books, ...elsewhere],
     shelves,
     selecting: selection.selecting,
     select: selection.start,
@@ -153,11 +189,12 @@ export function BookCollection({ books, query }: { books: LibraryBook[]; query: 
       : [menu?.book.fingerprint ?? '']
   const selectionContext = menuContext(selection.exit)
 
-  const renderBooks = (list: LibraryBook[], inSeries: boolean) => (
+  // Only this device's books can be selected: the others have no file to act on.
+  const renderBooks = (list: LibraryBook[], inSeries: boolean, selectable = true) => (
     <ul
       className={layout === 'grid' ? styles.grid : styles.list}
-      data-selecting={selection.selecting || undefined}
-      {...longPress}
+      data-selecting={(selectable && selection.selecting) || undefined}
+      {...(selectable ? longPress : {})}
     >
       {list.map((book) => {
         const Item = layout === 'grid' ? BookTile : BookRow
@@ -166,7 +203,7 @@ export function BookCollection({ books, query }: { books: LibraryBook[]; query: 
             key={book.fingerprint}
             book={book}
             inSeries={inSeries}
-            selection={selection}
+            selection={selectable ? selection : undefined}
             onClick={onBookClick}
             onMenu={openMenu}
           />
@@ -259,6 +296,28 @@ export function BookCollection({ books, query }: { books: LibraryBook[]; query: 
         renderBooks(visible, false)
       )}
 
+      {visibleElsewhere.length > 0 && (
+        <section className={styles.seriesGroup} aria-labelledby="elsewhere-heading">
+          <h2 id="elsewhere-heading" className={styles.seriesHeading}>
+            {searching ? (
+              'On your other devices'
+            ) : (
+              <button
+                type="button"
+                className={styles.foldButton}
+                aria-expanded={showElsewhere}
+                onClick={() => update({ library: { elsewhereOpen: !elsewhereOpen } })}
+              >
+                <ChevronRight size={18} strokeWidth={2} aria-hidden="true" />
+                On your other devices
+              </button>
+            )}
+            <span>{pluralize(visibleElsewhere.length, 'book')}</span>
+          </h2>
+          {showElsewhere && renderBooks(visibleElsewhere, false, false)}
+        </section>
+      )}
+
       {menu && (
         <Menu
           anchor={menu.anchor}
@@ -334,13 +393,14 @@ interface ItemProps {
   book: LibraryBook
   /** Shown under its series' heading, so only its position in the series is needed. */
   inSeries: boolean
-  selection: BookSelection
+  /** Absent for books that can't be selected (those only on other devices). */
+  selection?: BookSelection
   onClick: (book: LibraryBook, e: MouseEvent<HTMLElement>) => void
   onMenu: (book: LibraryBook, e: MouseEvent) => void
 }
 
 /** The round tick on a book: shows on hover, and on every book while selecting. */
-function SelectToggle({ book, selection }: Pick<ItemProps, 'book' | 'selection'>) {
+function SelectToggle({ book, selection }: { book: LibraryBook; selection: BookSelection }) {
   const selected = selection.has(book.fingerprint)
   return (
     <button
@@ -364,21 +424,33 @@ function byline(book: LibraryBook, inSeries: boolean): string {
   return authors ? `${position} · ${authors}` : position
 }
 
+/** "On Pixel 8" under a book only other devices have. */
+function ElsewhereNote({ book, className }: { book: LibraryBook; className?: string }) {
+  if (!book.elsewhere) return null
+  return (
+    <span className={className}>
+      <MonitorSmartphone size={14} strokeWidth={1.8} aria-hidden="true" />
+      {elsewhereLabel(book.elsewhere)}
+    </span>
+  )
+}
+
 function BookTile({ book, inSeries, selection, onClick, onMenu }: ItemProps) {
-  const selected = selection.selecting && selection.has(book.fingerprint)
+  const selected = !!selection?.selecting && selection.has(book.fingerprint)
   const phone = usePhoneLayout()
   return (
     <li
       className={styles.tile}
       data-fingerprint={book.fingerprint}
       data-selected={selected || undefined}
+      data-elsewhere={book.elsewhere ? '' : undefined}
       onContextMenu={(e) => onMenu(book, e)}
     >
-      <SelectToggle book={book} selection={selection} />
+      {selection && <SelectToggle book={book} selection={selection} />}
       <button
         type="button"
         className={styles.tileButton}
-        aria-pressed={selection.selecting ? selected : undefined}
+        aria-pressed={selection?.selecting ? selected : undefined}
         onClick={(e) => onClick(book, e)}
       >
         <Cover
@@ -411,24 +483,26 @@ function BookTile({ book, inSeries, selection, onClick, onMenu }: ItemProps) {
           Finished
         </div>
       )}
+      <ElsewhereNote book={book} className={styles.tileMeta} />
     </li>
   )
 }
 
 function BookRow({ book, inSeries, selection, onClick, onMenu }: ItemProps) {
   const lastRead = book.lastReadAt ? formatDay(book.lastReadAt) : ''
-  const selected = selection.selecting && selection.has(book.fingerprint)
+  const selected = !!selection?.selecting && selection.has(book.fingerprint)
   return (
     <li
       className={styles.row}
       data-fingerprint={book.fingerprint}
       data-selected={selected || undefined}
+      data-elsewhere={book.elsewhere ? '' : undefined}
       onContextMenu={(e) => onMenu(book, e)}
     >
       <button
         type="button"
         className={styles.rowMain}
-        aria-pressed={selection.selecting ? selected : undefined}
+        aria-pressed={selection?.selecting ? selected : undefined}
         onClick={(e) => onClick(book, e)}
       >
         <Cover entry={book.entry} title={book.title} authors={book.authors} width={40} />
@@ -442,6 +516,7 @@ function BookRow({ book, inSeries, selection, onClick, onMenu }: ItemProps) {
               {formatSeries(book.entry.series, book.entry.seriesIndex)}
             </span>
           )}
+          <ElsewhereNote book={book} className={styles.rowSeries} />
         </span>
       </button>
       <span className={styles.numeric}>
@@ -466,7 +541,7 @@ function BookRow({ book, inSeries, selection, onClick, onMenu }: ItemProps) {
       >
         <MoreHorizontal size={18} aria-hidden="true" />
       </button>
-      {selection.selecting && <SelectToggle book={book} selection={selection} />}
+      {selection?.selecting && <SelectToggle book={book} selection={selection} />}
     </li>
   )
 }

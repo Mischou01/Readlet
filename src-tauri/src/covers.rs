@@ -15,6 +15,11 @@ use crate::fsutil;
 const THUMB_WIDTH: u32 = 480;
 const THUMB_HEIGHT: u32 = 720;
 const JPEG_QUALITY: u8 = 85;
+/// The covers a device shares with the others (`cards`): enough for a library tile on a 2×
+/// display, small enough that a hundred of them sync in a moment.
+const CARD_WIDTH: u32 = 200;
+const CARD_HEIGHT: u32 = 300;
+const CARD_QUALITY: u8 = 78;
 /// Refuse absurd images before decoding them (decompression bombs).
 const MAX_DIMENSION: u32 = 12_000;
 const MAX_ALLOC: u64 = 512 * 1024 * 1024;
@@ -39,6 +44,17 @@ pub fn store_cover(bytes: &[u8], dest: &Path) -> Result<Palette> {
         .encode_image(&thumb)?;
     fsutil::write_atomic(dest, &jpeg)?;
     Ok(palette)
+}
+
+/// Writes a smaller copy of the thumbnail at `thumb` to `dest`, to share with other devices.
+pub fn store_card(thumb: &Path, dest: &Path) -> Result<()> {
+    let image = decode(&std::fs::read(thumb)?)?;
+    let small = image.resize(CARD_WIDTH, CARD_HEIGHT, FilterType::CatmullRom);
+    let mut jpeg = Vec::new();
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, CARD_QUALITY)
+        .encode_image(&flatten(&small))?;
+    fsutil::write_atomic(dest, &jpeg)?;
+    Ok(())
 }
 
 fn decode(bytes: &[u8]) -> Result<DynamicImage> {
@@ -84,6 +100,17 @@ mod tests {
         store_cover(&png(1600, 2400, [30, 60, 200, 255]), &dest).unwrap();
         let thumb = image::open(&dest).unwrap();
         assert_eq!((thumb.width(), thumb.height()), (THUMB_WIDTH, THUMB_HEIGHT));
+    }
+
+    #[test]
+    fn shares_a_smaller_copy() {
+        let dir = tempfile::tempdir().unwrap();
+        let thumb = dir.path().join("x.jpg");
+        store_cover(&png(1600, 2400, [30, 60, 200, 255]), &thumb).unwrap();
+        let card = dir.path().join("cards/x.jpg");
+        store_card(&thumb, &card).unwrap();
+        let small = image::open(&card).unwrap();
+        assert_eq!((small.width(), small.height()), (CARD_WIDTH, CARD_HEIGHT));
     }
 
     #[test]

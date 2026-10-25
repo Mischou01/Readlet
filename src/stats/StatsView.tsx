@@ -9,7 +9,7 @@ import { useElementWidth, useToday } from '../lib/hooks'
 import type { YearlyGoal } from '../lib/types'
 import type { LibraryBook } from '../library/model'
 import { useApp } from '../state/app'
-import { useLibraryBooks } from '../state/library'
+import { useAllBooks } from '../state/library'
 import { useDailyGoal, useStats, useYearlyGoal } from '../state/stats'
 import { accentColor, useAuraFor, useColorScheme, type ColorScheme } from '../theme/aura'
 import { GoalDialog } from './GoalDialog'
@@ -83,7 +83,7 @@ export function StatsView() {
   const loaded = useStats((s) => s.loaded)
   const dailyGoal = useDailyGoal()
   const yearlyGoal = useYearlyGoal()
-  const books = useLibraryBooks()
+  const books = useAllBooks()
   const scheme = useColorScheme()
   const setSettingsOpen = useApp((s) => s.setSettingsOpen)
   const today = useToday()

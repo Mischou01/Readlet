@@ -74,6 +74,26 @@ export function moreItems(fingerprints: string[], ctx: BookMenuContext): MenuEnt
     action()
   }
   const book = fingerprints.length === 1 && ctx.books.find((b) => b.fingerprint === fingerprints[0])
+  if (book && book.elsewhere) {
+    // On another device only: its details and highlights are here, its file isn't. Its details
+    // are edited where the file is.
+    return [
+      {
+        id: 'details',
+        label: 'About this book',
+        onSelect: then(() => app.showDetails(book.fingerprint)),
+      },
+      ...(book.highlights.length
+        ? [
+            {
+              id: 'hl',
+              label: 'Highlights',
+              onSelect: then(() => app.navigate({ name: 'highlights', book: book.fingerprint })),
+            },
+          ]
+        : []),
+    ]
+  }
   if (!book) {
     return [
       {
@@ -132,6 +152,7 @@ export function deleteItem(fingerprints: string[], ctx: BookMenuContext): MenuEn
 
 /** Everything that can be done to the books, as their menu lists it. */
 export function bookMenuItems(fingerprints: string[], ctx: BookMenuContext): MenuEntry[] {
+  const elsewhere = ctx.books.some((b) => b.elsewhere && fingerprints.includes(b.fingerprint))
   return [
     ...moreItems(fingerprints, ctx),
     { separator: true, id: 's1' },
@@ -140,7 +161,7 @@ export function bookMenuItems(fingerprints: string[], ctx: BookMenuContext): Men
     { separator: true, id: 's2' },
     { heading: 'Shelves', id: 'h-shelves' },
     ...shelfItems(fingerprints, ctx),
-    { separator: true, id: 's3' },
-    deleteItem(fingerprints, ctx),
+    // A book only other devices have has no file here to delete.
+    ...(elsewhere ? [] : [{ separator: true, id: 's3' } as const, deleteItem(fingerprints, ctx)]),
   ]
 }

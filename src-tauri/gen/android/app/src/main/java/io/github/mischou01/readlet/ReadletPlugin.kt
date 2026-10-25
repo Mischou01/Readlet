@@ -64,6 +64,12 @@ class SystemBarsArgs {
 }
 
 @InvokeArg
+class SecretArgs {
+  var name: String = ""
+  var value: String? = null
+}
+
+@InvokeArg
 class ReaderControlsArgs {
   var keepScreenOn: Boolean = false
   var volumeKeys: Boolean = false
@@ -72,7 +78,8 @@ class ReaderControlsArgs {
 /**
  * What only Android can do for Readlet, called from Rust (src-tauri/src/android): read-aloud
  * through the system's text-to-speech, the media notification, "All files access", the system
- * pickers, the system bars, and the screen and volume keys while reading. Everything it reports
+ * pickers, the system bars, the screen and volume keys while reading, and the keystore that keeps
+ * the sync token. Everything it reports
  * goes through one channel to Rust, which forwards it to the UI.
  */
 @TauriPlugin
@@ -80,6 +87,7 @@ class ReadletPlugin(private val activity: Activity) : Plugin(activity) {
   private var events: Channel? = null
   private val speech = Speech(activity.applicationContext) { emit(it) }
   private var insets = JSObject()
+  private val secrets by lazy { Secrets(activity.applicationContext) }
 
   override fun load(webView: WebView) {
     // Show the window's background (the app's own background colour) until the page paints,
@@ -341,6 +349,31 @@ class ReadletPlugin(private val activity: Activity) : Plugin(activity) {
       }
       invoke.resolve()
     }
+  }
+
+  // -- Secrets ----------------------------------------------------------------------------------
+
+  @Command
+  fun getSecret(invoke: Invoke) {
+    val args = invoke.parseArgs(SecretArgs::class.java)
+    invoke.resolve(JSObject().apply { put("value", secrets.get(args.name)) })
+  }
+
+  @Command
+  fun setSecret(invoke: Invoke) {
+    val args = invoke.parseArgs(SecretArgs::class.java)
+    try {
+      secrets.set(args.name, args.value ?: "")
+      invoke.resolve()
+    } catch (e: Exception) {
+      invoke.reject(e.message ?: "The keystore refused the secret")
+    }
+  }
+
+  @Command
+  fun deleteSecret(invoke: Invoke) {
+    secrets.delete(invoke.parseArgs(SecretArgs::class.java).name)
+    invoke.resolve()
   }
 
   @Command

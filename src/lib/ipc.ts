@@ -9,6 +9,8 @@ import type {
   BookEntry,
   BookMetadata,
   BookRecord,
+  DevicePosition,
+  ElsewhereBook,
   FoundBook,
   FoundDetails,
   FreeBook,
@@ -18,6 +20,7 @@ import type {
   Session,
   Shelf,
   StoreChanges,
+  SyncStatus,
   YearlyGoal,
 } from './types'
 
@@ -50,11 +53,13 @@ export interface ExportFile {
 export const api = {
   getAppInfo: () => invoke<AppInfo>('get_app_info'),
   setPreferences: (preferences: object) => invoke<void>('set_preferences', { preferences }),
+  setDeviceName: (name: string) => invoke<AppInfo>('set_device_name', { name }),
 
   chooseLibrary: (path: string) => invoke<AppInfo>('choose_library', { path }),
   rescanLibrary: () => invoke<void>('rescan_library'),
   listBooks: () => invoke<BookEntry[]>('list_books'),
   getBooks: (fingerprints: string[]) => invoke<BookEntry[]>('get_books', { fingerprints }),
+  listElsewhereBooks: () => invoke<ElsewhereBook[]>('list_elsewhere_books'),
   booksNeedingMetadata: () => invoke<string[]>('books_needing_metadata'),
   setBookMetadata: (fingerprint: string, metadata: BookMetadata, error?: string) =>
     invoke<BookEntry>('set_book_metadata', { fingerprint, metadata, error: error ?? null }),
@@ -86,6 +91,7 @@ export const api = {
 
   listRecords: () => invoke<BookRecord[]>('list_records'),
   getRecord: (fingerprint: string) => invoke<BookRecord>('get_record', { fingerprint }),
+  getPositions: (fingerprint: string) => invoke<DevicePosition[]>('get_positions', { fingerprint }),
   setProgress: (fingerprint: string, progress: ProgressInput) =>
     invoke<BookRecord>('set_progress', { fingerprint, progress }),
   setStatus: (fingerprint: string, status: string) =>
@@ -135,6 +141,14 @@ export const api = {
   setReaderControls: (controls: { keepScreenOn: boolean; volumeKeys: boolean }) =>
     invoke<void>('set_reader_controls', { controls }),
   moveToBackground: () => invoke<void>('move_to_background'),
+
+  syncStatus: () => invoke<SyncStatus>('sync_status'),
+  connectKDrive: (token: string, drive: string) =>
+    invoke<SyncStatus>('connect_kdrive', { token, drive }),
+  disconnectSync: () => invoke<SyncStatus>('disconnect_sync'),
+  syncNow: () => invoke<SyncStatus>('sync_now'),
+  /** A full pass unless one just happened (opening a book). */
+  syncSoon: () => invoke<void>('sync_soon'),
 }
 
 export interface PlaybackSession {
@@ -176,6 +190,8 @@ export const events = {
     listen<AppError>('library:scan-failed', (e) => handler(e.payload)),
   onStoreChanged: (handler: (changes: StoreChanges) => void): Promise<UnlistenFn> =>
     listen<StoreChanges>('store:changed', (e) => handler(e.payload)),
+  onSyncStatus: (handler: (status: SyncStatus) => void): Promise<UnlistenFn> =>
+    listen<SyncStatus>('sync:status', (e) => handler(e.payload)),
   onTts: (handler: (event: TtsEvent) => void): Promise<UnlistenFn> =>
     listen<TtsEvent>('tts:event', (e) => handler(e.payload)),
   onTtsRemote: (handler: (action: RemoteAction) => void): Promise<UnlistenFn> =>

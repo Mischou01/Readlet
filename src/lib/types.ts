@@ -193,6 +193,40 @@ export interface StoreChanges {
   profile: boolean
   shelves: boolean
   resurfaced: boolean
+  /** Which books another device has, or its name, changed. */
+  catalog: boolean
+}
+
+/** A book only other devices have (src-tauri/src/cards.rs): no file here, so it can't open. */
+export interface ElsewhereBook extends BookEntry {
+  /** The names of the devices that have it. */
+  devices: string[]
+}
+
+export interface Device {
+  id: string
+  name: string
+}
+
+/** Where one device last was in a book. */
+export interface DevicePosition {
+  device: Device
+  /** This device's own position. */
+  own: boolean
+  progress: Progress
+}
+
+/** How syncing reading data is going (src-tauri/src/sync). */
+export interface SyncStatus {
+  /** The connected service ("kDrive"), or null when sync is off. */
+  service: string | null
+  /** Where in it: "Private › Readlet". */
+  folder: string | null
+  syncing: boolean
+  lastSyncedAt: number | null
+  error: string | null
+  /** The token was turned down: connecting again fixes it. */
+  needsReconnect: boolean
 }
 
 export interface AppInfo {

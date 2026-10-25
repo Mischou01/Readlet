@@ -11,9 +11,15 @@ const dayMonthYear = new Intl.DateTimeFormat(LOCALE, {
   year: 'numeric',
 })
 const monthOnly = new Intl.DateTimeFormat(LOCALE, { month: 'long' })
+const timeOfDay = new Intl.DateTimeFormat(LOCALE, { hour: 'numeric', minute: '2-digit' })
 
 export function formatAuthors(authors: readonly string[]): string {
   return listFormat.format(authors)
+}
+
+/** "Pixel 8 and Laptop" */
+export function formatList(items: readonly string[]): string {
+  return listFormat.format(items)
 }
 
 export function formatPercent(fraction: number): string {
@@ -63,6 +69,16 @@ export function formatAgo(ms: number, now = Date.now()): string {
   }
   const sameYear = new Date(ms).getFullYear() === new Date(now).getFullYear()
   return sameYear ? `in ${monthOnly.format(ms)}` : `in ${dayMonthYear.format(ms)}`
+}
+
+/** "just now", "5 min ago", "today at 14:05", "yesterday at 9:12", "12 October at 8:30". */
+export function formatSince(ms: number, now = Date.now()): string {
+  const minutes = Math.floor((now - ms) / 60_000)
+  if (minutes < 1) return 'just now'
+  if (minutes < 60) return `${minutes} min ago`
+  const day = formatDay(ms, now)
+  const when = day === 'Today' || day === 'Yesterday' ? day.toLowerCase() : day
+  return `${when} at ${timeOfDay.format(ms)}`
 }
 
 /** Local calendar day as `YYYY-MM-DD`. */

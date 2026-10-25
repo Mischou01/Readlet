@@ -1,7 +1,7 @@
 //! The commands the UI can invoke. They validate input, then hand off to the library, index and
 //! store. Anything that touches the disk runs off the main thread.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
@@ -10,6 +10,7 @@ use tauri::ipc::{InvokeBody, Request};
 use tauri::{AppHandle, Manager, State};
 
 use crate::aura::Palette;
+use crate::cards::{self, ElsewhereBook};
 use crate::catalog::{self, FreeBook};
 use crate::covers;
 use crate::error::{Error, Result};
@@ -17,11 +18,14 @@ use crate::fsutil::{self, now_ms};
 use crate::index::{BookEntry, BookMetadata, CoverEdit};
 use crate::library::fingerprint;
 use crate::lookup::{self, Candidate, FoundDetails};
+use crate::settings::clean_device_name;
 use crate::state::AppState;
+use crate::store::DevicePosition;
 use crate::store::model::{
     self, Annotation, BookRecord, COVER_FIELD, Profile, Progress, Resurfaced, Session, Shelf,
     Stamped, YearlyGoal,
 };
+use crate::sync::SyncStatus;
 
 /// Runs blocking work on the blocking thread pool.
 async fn blocking<T: Send + 'static>(
@@ -89,6 +93,24 @@ pub async fn get_app_info(app: AppHandle, state: State<'_, AppState>) -> Result<
     Ok(app_info(&app, &state))
 }
 
+/// Renames this device, as the other devices show it.
+#[tauri::command]
+pub async fn set_device_name(app: AppHandle, name: String) -> Result<AppInfo> {
+    let name = clean_device_name(&name)?;
+    blocking(&app.clone(), move |state| {
+        {
+            let mut settings = state.settings();
+            settings.device_name = name.clone();
+            state.save_settings(&settings)?;
+        }
+        if let Ok(library) = state.library() {
+            library.store.rename_device(&name)?;
+        }
+        Ok(app_info(&app, state))
+    })
+    .await
+}
+
 #[tauri::command]
 pub async fn set_preferences(state: State<'_, AppState>, preferences: Value) -> Result<()> {
     let mut settings = state.settings();
@@ -139,6 +161,28 @@ pub async fn list_books(app: AppHandle) -> Result<Vec<BookEntry>> {
                 None => entry,
             })
             .collect())
+    })
+    .await
+}
+
+/// The books other devices have and this one doesn't, from their cards (`cards`).
+#[tauri::command]
+pub async fn list_elsewhere_books(app: AppHandle) -> Result<Vec<ElsewhereBook>> {
+    blocking(&app, |state| {
+        let library = state.library()?;
+        let local: HashSet<String> = state
+            .index()
+            .books()?
+            .into_iter()
+            .map(|b| b.fingerprint)
+            .collect();
+        let records: HashMap<String, BookRecord> = library
+            .store
+            .books()
+            .into_iter()
+            .map(|r| (r.fingerprint.clone(), r))
+            .collect();
+        Ok(cards::elsewhere(&library.store, &local, &records))
     })
     .await
 }
@@ -515,6 +559,16 @@ pub async fn get_record(app: AppHandle, fingerprint: String) -> Result<BookRecor
     check_fingerprint(&fingerprint)?;
     blocking(&app, move |state| {
         Ok(state.library()?.store.book(&fingerprint))
+    })
+    .await
+}
+
+/// Where each device last was in a book, the most recent first.
+#[tauri::command]
+pub async fn get_positions(app: AppHandle, fingerprint: String) -> Result<Vec<DevicePosition>> {
+    check_fingerprint(&fingerprint)?;
+    blocking(&app, move |state| {
+        Ok(state.library()?.store.positions(&fingerprint))
     })
     .await
 }
@@ -975,4 +1029,40 @@ mod tests {
         assert_eq!(stamp_after(Some(far_future)), far_future + 1);
         assert!(stamp_after(None) > 0);
     }
+}
+
+// -- Sync --------------------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn sync_status(state: State<'_, AppState>) -> Result<SyncStatus> {
+    Ok(state.sync.status())
+}
+
+/// Connects kDrive with the reader's token and their drive's address (or number).
+#[tauri::command]
+pub async fn connect_kdrive(app: AppHandle, token: String, drive: String) -> Result<SyncStatus> {
+    blocking(&app.clone(), move |state| {
+        state.sync.connect_kdrive(&app, &token, &drive)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn disconnect_sync(app: AppHandle) -> Result<SyncStatus> {
+    blocking(&app.clone(), move |state| state.sync.disconnect(&app)).await
+}
+
+/// A full pass now (the reader pressed "Sync now").
+#[tauri::command]
+pub async fn sync_now(state: State<'_, AppState>) -> Result<SyncStatus> {
+    state.sync.sync_now();
+    Ok(state.sync.status())
+}
+
+/// A full pass unless one just happened: the reader is opening a book, and may have read on in
+/// it elsewhere.
+#[tauri::command]
+pub async fn sync_soon(state: State<'_, AppState>) -> Result<()> {
+    state.sync.refresh();
+    Ok(())
 }

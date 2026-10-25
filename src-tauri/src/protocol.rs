@@ -1,11 +1,11 @@
 //! Custom URL schemes for the webview (docs/PLAN.md §3, D9):
 //!
 //! - `book://localhost/<fingerprint>` serves an indexed book's bytes to foliate-js.
-//! - `cover://localhost/<fingerprint>` serves its cover thumbnail: the one the reader chose, or
-//!   the one extracted from the book.
+//! - `cover://localhost/<fingerprint>` serves its cover thumbnail: the one the reader chose, the
+//!   one extracted from the book, or for a book only another device has, the one it shares.
 //!
-//! Only fingerprints that are in the index resolve, so the webview gets no general filesystem
-//! access. (On Windows the URLs are `http://book.localhost/…` and `http://cover.localhost/…`.)
+//! Only fingerprints resolve, to files Readlet keeps for them, so the webview gets no general
+//! filesystem access. (On Windows the URLs are `http://book.localhost/…` and `http://cover.localhost/…`.)
 
 use std::borrow::Cow;
 use std::path::PathBuf;
@@ -78,7 +78,12 @@ fn serve_cover<R: Runtime>(app: &AppHandle<R>, request: &Request<Vec<u8>>) -> Re
         return status(StatusCode::BAD_REQUEST);
     };
     let state = app.state::<AppState>();
-    let path = chosen_cover(&state, fp).unwrap_or_else(|| cover_path(&state.paths.covers, fp));
+    let Some(path) = chosen_cover(&state, fp)
+        .or_else(|| Some(cover_path(&state.paths.covers, fp)).filter(|p| p.is_file()))
+        .or_else(|| shared_cover(&state, fp))
+    else {
+        return status(StatusCode::NOT_FOUND);
+    };
     match std::fs::read(path) {
         Ok(bytes) => Response::builder()
             .status(StatusCode::OK)
@@ -90,6 +95,11 @@ fn serve_cover<R: Runtime>(app: &AppHandle<R>, request: &Request<Vec<u8>>) -> Re
             .unwrap_or_else(|_| status(StatusCode::INTERNAL_SERVER_ERROR)),
         Err(_) => status(StatusCode::NOT_FOUND),
     }
+}
+
+/// The small cover another device shares for a book that's only on that device (`cards`).
+fn shared_cover(state: &AppState, fp: &str) -> Option<PathBuf> {
+    state.library().ok()?.store.card_cover(fp)
 }
 
 /// The thumbnail of a cover the reader chose for the book, if there is one.

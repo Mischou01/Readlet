@@ -30,7 +30,7 @@ pub struct FileRecord {
 }
 
 /// Metadata extracted by foliate-js in the webview.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct BookMetadata {
     pub title: Option<String>,

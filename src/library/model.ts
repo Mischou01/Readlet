@@ -1,8 +1,16 @@
 // The library as the UI sees it: index entries joined with reading data, plus sorting and
 // filtering. Pure functions, covered by model.test.ts.
 
+import { formatList } from '../lib/format'
 import { authorSortKey, bookAuthors, bookTitle, matchesQuery, titleSortKey } from '../lib/text'
-import type { Annotation, BookEntry, BookRecord, ReadingStatus, Shelf } from '../lib/types'
+import type {
+  Annotation,
+  BookEntry,
+  BookRecord,
+  ElsewhereBook,
+  ReadingStatus,
+  Shelf,
+} from '../lib/types'
 import type { LibrarySort, LibraryTab } from '../state/preferences'
 
 export interface LibraryBook {
@@ -19,6 +27,8 @@ export interface LibraryBook {
   /** When the status last changed (e.g. when it was finished). */
   statusAt: number
   highlights: Annotation[]
+  /** Only on other devices (named here): there's no file to open on this one. */
+  elsewhere?: string[]
 }
 
 /** Books past this point count as read to the end. */
@@ -56,6 +66,25 @@ export function joinLibrary(
   return Object.values(books).map((entry) =>
     toLibraryBook(entry, records[entry.fingerprint] ?? null),
   )
+}
+
+/** Where a book only other devices have is: "On Pixel 8", "On Pixel 8 and Laptop". */
+export function elsewhereLabel(devices: string[]): string {
+  return `On ${formatList(devices)}`
+}
+
+/** The books only other devices have (those that aren't in `local`), with their reading data. */
+export function joinElsewhere(
+  elsewhere: Record<string, ElsewhereBook>,
+  local: Record<string, BookEntry>,
+  records: Record<string, BookRecord>,
+): LibraryBook[] {
+  return Object.values(elsewhere)
+    .filter((book) => !local[book.fingerprint])
+    .map(({ devices, ...entry }) => ({
+      ...toLibraryBook(entry, records[entry.fingerprint] ?? null),
+      elsewhere: devices,
+    }))
 }
 
 const byTitle = (a: LibraryBook, b: LibraryBook) =>
