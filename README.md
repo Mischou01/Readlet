@@ -14,6 +14,8 @@ E-reader for Linux and Android. Built with Tauri 2, React and
   adjustable fonts and spacing
 - Highlights in five colours, notes, bookmarks, Wiktionary lookup, Markdown export
 - Reading stats: time, streaks, speed and goals
+- Sync of reading data through kDrive: your place, highlights, notes and stats on every device,
+  and the books you read elsewhere shown even where their file isn't
 - Read-aloud via Speech Dispatcher (Linux) or the system TTS engine (Android), with a sleep timer
 - PDF and comic zoom with a view lock
 - Android: keep-awake while reading, volume keys for page turns, lock-screen playback controls
@@ -27,12 +29,14 @@ E-reader for Linux and Android. Built with Tauri 2, React and
 
 Readlet reads books from a folder and stores progress, highlights and stats in `.readlet/` inside
 it. Each device writes only to its own subdirectory and all of them are merged on read, so the
-folder can be synced with Syncthing, Nextcloud or similar without conflicts. Book files are never
-modified: edited details and chosen covers are stored in `.readlet/` too. Books are identified by a content fingerprint, so renaming or moving a file keeps its
+folder can be synced with Syncthing, Nextcloud or similar without conflicts. Alternatively,
+Readlet syncs `.readlet/` itself through a folder in kDrive (Settings › Sync), with a personal API
+token kept in the system keyring (the Android keystore on a phone); book files aren't sent. Book
+files are never modified: edited details and chosen covers are stored in `.readlet/` too. Books are identified by a content fingerprint, so renaming or moving a file keeps its
 data. The SQLite index in the app data directory is a cache and can be rebuilt from the folder.
 
-Readlet only goes online when asked: Wiktionary for word lookups (once enabled in Settings), and
-Open Library when you search for a book's details.
+Readlet only goes online when asked: Wiktionary for word lookups (once enabled in Settings), Open
+Library when you search for a book's details, and kDrive once you connect it for sync.
 
 ## Install
 

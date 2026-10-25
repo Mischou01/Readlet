@@ -26,6 +26,7 @@ import { SettingsSheet } from './settings/SettingsSheet'
 import { useApp } from './state/app'
 import { useLibrary } from './state/library'
 import { useStats } from './state/stats'
+import { followSync } from './state/sync'
 import { showError } from './state/toasts'
 import { StatsView } from './stats/StatsView'
 import { useColorScheme, useDocumentTheme, useThemeOverride } from './theme/aura'
@@ -120,13 +121,18 @@ function Shell({ libraryRoot }: { libraryRoot: string }) {
         useLibrary.getState().setScanning(false)
         showError(`Couldn’t read your books folder: ${e.message}`)
       }),
+      followSync(),
       events.onStoreChanged(async (changes) => {
         try {
-          const { refreshRecords, refreshBooksById, refreshShelves } = useLibrary.getState()
+          const library = useLibrary.getState()
+          const { refreshRecords, refreshBooksById, refreshShelves, refreshElsewhere } = library
           const stats = useStats.getState()
+          // Edits to a book only other devices have are applied to its card.
+          const elsewhere = changes.books.some((fp) => fp in library.elsewhere)
           await Promise.all([
             changes.books.length ? refreshRecords(changes.books) : null,
             changes.books.length ? refreshBooksById(changes.books) : null,
+            changes.catalog || elsewhere ? refreshElsewhere() : null,
             changes.shelves ? refreshShelves() : null,
             changes.sessions ? stats.refreshSessions() : null,
             changes.profile ? stats.refreshProfile() : null,

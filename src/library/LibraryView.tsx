@@ -7,7 +7,7 @@ import { Button, IconButton } from '../components/Button'
 import { pluralize } from '../lib/format'
 import { isAndroid } from '../lib/platform'
 import { useApp } from '../state/app'
-import { useLibrary, useLibraryBooks } from '../state/library'
+import { useElsewhereBooks, useLibrary, useLibraryBooks } from '../state/library'
 import { useAuraFor } from '../theme/aura'
 import { pickAndAddBooks, pickLibraryFolder } from './actions'
 import { BookCollection } from './BookCollection'
@@ -33,6 +33,7 @@ function heroBook(books: LibraryBook[]): LibraryBook | null {
 
 export function LibraryView() {
   const books = useLibraryBooks()
+  const elsewhere = useElsewhereBooks()
   const loaded = useLibrary((s) => s.loaded)
   const scanning = useLibrary((s) => s.scanning)
   const setSettingsOpen = useApp((s) => s.setSettingsOpen)
@@ -87,7 +88,7 @@ export function LibraryView() {
               </section>
             )}
             <IndexingStatus />
-            <BookCollection books={books} query={query} />
+            <BookCollection books={books} elsewhere={elsewhere} query={query} />
             {query.trim() && (
               <button
                 type="button"

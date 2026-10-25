@@ -10,6 +10,7 @@ use serde_json::{Map, Value};
 
 use crate::error::{Error, Result};
 use crate::fsutil;
+use crate::sync::SyncConfig;
 
 /// The UI stores its preferences as one JSON object; Rust only persists it.
 const MAX_PREFERENCES_BYTES: usize = 64 * 1024;
@@ -23,6 +24,9 @@ pub struct Settings {
     pub library_root: Option<PathBuf>,
     #[serde(default)]
     pub preferences: Map<String, Value>,
+    /// Where reading data syncs to; the token itself is in the keyring (`sync::secret`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sync: Option<SyncConfig>,
 }
 
 impl Settings {
@@ -32,6 +36,7 @@ impl Settings {
             device_name: device_name(),
             library_root: None,
             preferences: Map::new(),
+            sync: None,
         }
     }
 
@@ -70,6 +75,15 @@ impl Settings {
         self.preferences = map;
         Ok(())
     }
+}
+
+/// A name for this device as the reader typed it: trimmed, and short enough to show.
+pub fn clean_device_name(name: &str) -> Result<String> {
+    let name = name.split_whitespace().collect::<Vec<_>>().join(" ");
+    if name.is_empty() || name.chars().count() > 60 {
+        return Err(Error::invalid("A device name needs 1 to 60 characters."));
+    }
+    Ok(name)
 }
 
 /// Device ids name folders inside the synced book folder, so they must be plain hex.
@@ -140,6 +154,16 @@ mod tests {
             .set_preferences(serde_json::json!({ "theme": "dark" }))
             .unwrap();
         assert_eq!(settings.preferences["theme"], "dark");
+    }
+
+    #[test]
+    fn cleans_device_names() {
+        assert_eq!(
+            clean_device_name("  Work   laptop ").unwrap(),
+            "Work laptop"
+        );
+        assert!(clean_device_name("   ").is_err());
+        assert!(clean_device_name(&"x".repeat(61)).is_err());
     }
 
     #[test]

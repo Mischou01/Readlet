@@ -1,12 +1,14 @@
 //! Application state and the background jobs that keep the index in step with the folder: a
 //! watcher on desktop, and a catch-up whenever the app returns to the foreground on mobile.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, RwLock};
 
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
+use crate::cards;
 use crate::error::{Error, Result};
 use crate::fsutil;
 use crate::index::Index;
@@ -14,6 +16,9 @@ use crate::index::Index;
 use crate::library::watch;
 use crate::library::{Library, scan};
 use crate::settings::Settings;
+#[cfg(desktop)]
+use crate::store::StoreChanges;
+use crate::sync::SyncService;
 
 /// Events sent to the UI.
 pub mod events {
@@ -23,6 +28,8 @@ pub mod events {
     pub const LIBRARY_SCAN_FAILED: &str = "library:scan-failed";
     /// Another device's reading data arrived; payload: `StoreChanges`.
     pub const STORE_CHANGED: &str = "store:changed";
+    /// Sync started or finished a pass, or failed; payload: `SyncStatus`.
+    pub const SYNC_STATUS: &str = "sync:status";
     /// The app went to the background (mobile only).
     #[cfg(mobile)]
     pub const APP_SUSPENDED: &str = "app:suspended";
@@ -34,6 +41,8 @@ pub struct AppPaths {
     pub covers: PathBuf,
     /// Books being downloaded, before they're added to the library folder.
     pub downloads: PathBuf,
+    /// What sync last moved (`sync::SavedState`).
+    pub sync_state: PathBuf,
 }
 
 impl AppPaths {
@@ -49,12 +58,14 @@ impl AppPaths {
             index: data.join("index.sqlite3"),
             covers: cache.join("covers"),
             downloads: cache.join("downloads"),
+            sync_state: data.join("sync.json"),
         })
     }
 }
 
 pub struct AppState {
     pub paths: AppPaths,
+    pub sync: SyncService,
     settings: Mutex<Settings>,
     index: Mutex<Index>,
     library: RwLock<Option<Arc<Library>>>,
@@ -84,8 +95,10 @@ impl AppState {
             }
         };
         std::fs::create_dir_all(&paths.covers)?;
+        let sync = SyncService::new(paths.sync_state.clone(), settings.sync.as_ref());
         Ok(Self {
             paths,
+            sync,
             settings: Mutex::new(settings),
             index: Mutex::new(index),
             library: RwLock::new(None),
@@ -135,6 +148,8 @@ impl AppState {
 
         *self.library.write().unwrap_or_else(|e| e.into_inner()) = Some(library);
         self.request_scan(app);
+        // A different library is a different folder to mirror: catch up with it.
+        self.sync.sync_now();
         Ok(())
     }
 
@@ -175,14 +190,66 @@ impl AppState {
         self.request_scan(app);
         let app = app.clone();
         tauri::async_runtime::spawn_blocking(move || {
-            let state = app.state::<AppState>();
-            let after = library.store.snapshot();
-            let before = std::mem::replace(&mut *lock(&state.store_snapshot), after.clone());
-            let changes = library.store.changes_between(&before, &after);
+            app.state::<AppState>().report_store_changes(&app, &library);
+        });
+    }
+
+    /// Reloads and reports what other devices changed since the last look (mobile).
+    #[cfg(mobile)]
+    fn report_store_changes<R: Runtime>(&self, app: &AppHandle<R>, library: &Library) {
+        let after = library.store.snapshot();
+        let before = std::mem::replace(&mut *lock(&self.store_snapshot), after.clone());
+        let changes = library.store.changes_between(&before, &after);
+        if !changes.is_empty() {
+            let _ = app.emit(events::STORE_CHANGED, &changes);
+        }
+    }
+
+    /// Reloads what a sync pass brought from other devices (`paths`) and tells the UI. On the
+    /// desktop the folder watcher does this, when it's running.
+    pub fn synced_files<R: Runtime>(&self, app: &AppHandle<R>, paths: &[PathBuf]) {
+        let Ok(library) = self.library() else {
+            return;
+        };
+        #[cfg(mobile)]
+        {
+            let _ = paths;
+            self.report_store_changes(app, &library);
+        }
+        #[cfg(desktop)]
+        if !library.is_watching() {
+            let mut changes = StoreChanges::default();
+            for change in paths.iter().filter_map(|p| library.store.classify(p)) {
+                changes.add(change);
+            }
+            library.store.invalidate_books(&changes.books);
             if !changes.is_empty() {
                 let _ = app.emit(events::STORE_CHANGED, &changes);
             }
-        });
+        }
+    }
+
+    /// Rewrites this device's book cards, so other devices can show its books (`cards`).
+    pub fn refresh_cards(&self) {
+        let Ok(library) = self.library() else {
+            return;
+        };
+        let books = match self.index().books() {
+            Ok(books) => books,
+            Err(e) => {
+                log::warn!("couldn't list the books for their cards: {e}");
+                return;
+            }
+        };
+        let records: HashMap<_, _> = library
+            .store
+            .books()
+            .into_iter()
+            .map(|record| (record.fingerprint.clone(), record))
+            .collect();
+        if let Err(e) = cards::refresh_own(&library.store, &books, &records, &self.paths.covers) {
+            log::warn!("couldn't write the book cards: {e}");
+        }
     }
 
     /// Schedules a scan. Requests that arrive while one is running are coalesced into a single
@@ -209,6 +276,7 @@ impl AppState {
                 match state.scan_once() {
                     Ok(report) => {
                         let _ = app.emit(events::LIBRARY_CHANGED, report);
+                        state.refresh_cards();
                     }
                     Err(e) => {
                         log::error!("library scan failed: {e}");

@@ -13,6 +13,7 @@ import {
   type ScreenOnMinutes,
 } from '../state/preferences'
 import styles from './settings.module.css'
+import { SyncSection } from './SyncSection'
 
 const APPEARANCES: { value: Appearance; label: string }[] = [
   { value: 'system', label: 'System' },
@@ -80,6 +81,8 @@ export function SettingsSheet() {
             </Button>
           </div>
         </section>
+
+        <SyncSection />
 
         {isAndroid && (
           <section>

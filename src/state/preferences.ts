@@ -38,7 +38,14 @@ export interface ReaderPreferences {
 export interface Preferences {
   appearance: Appearance
   reduceTransparency: boolean
-  library: { layout: LibraryLayout; sort: LibrarySort; tab: LibraryTab; shelf: string | null }
+  library: {
+    layout: LibraryLayout
+    sort: LibrarySort
+    tab: LibraryTab
+    shelf: string | null
+    /** The books on other devices are shown, rather than folded away under their heading. */
+    elsewhereOpen: boolean
+  }
   reader: ReaderPreferences
   readAloud: { rate: number; voice: string | null }
   /** Looking up words sends them to Wikimedia, so it asks first. */
@@ -57,7 +64,7 @@ export const DEFAULT_BYTES_PER_MINUTE = 1600
 export const DEFAULT_PREFERENCES: Preferences = {
   appearance: 'system',
   reduceTransparency: false,
-  library: { layout: 'grid', sort: 'recent', tab: 'all', shelf: null },
+  library: { layout: 'grid', sort: 'recent', tab: 'all', shelf: null, elsewhereOpen: false },
   reader: {
     theme: 'paper',
     font: 'literata',
@@ -112,6 +119,7 @@ export function normalizePreferences(raw: unknown): Preferences {
       sort: oneOf(lib.sort, ['recent', 'title', 'author', 'series', 'added'], d.library.sort),
       tab: oneOf(lib.tab, ['all', 'reading', 'toRead', 'finished'], d.library.tab),
       shelf: typeof lib.shelf === 'string' ? lib.shelf : null,
+      elsewhereOpen: bool(lib.elsewhereOpen, d.library.elsewhereOpen),
     },
     reader: {
       theme: oneOf(reader.theme, ['system', 'paper', 'sepia', 'dusk', 'night'], d.reader.theme),

@@ -5,6 +5,8 @@
 //!   device.json                  { name } so people can tell the folders apart
 //!   books/<fingerprint>.json     progress, status, highlights, notes, bookmarks, edited details
 //!   covers/<fingerprint>-<t>.jpg covers the reader chose (the record says which one applies)
+//!   catalog.json                 the books this device has, so others can show them (`cards`)
+//!   cards/<fingerprint>.jpg      small covers of those books, for the ones being read
 //!   profile.json                 reading goals
 //!   shelves.json
 //!   sessions/<year>.jsonl        append-only reading sessions
@@ -24,21 +26,26 @@ use std::io::{self, BufRead, BufReader};
 use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
 
-use serde::Serialize;
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::error::Result;
 use crate::fsutil;
 use crate::library::fingerprint;
 use crate::settings::is_valid_device_id;
-use model::{BookRecord, Profile, Resurfaced, Session, Shelf, ShelvesDoc, Stamped};
+use model::{BookRecord, Profile, Progress, Resurfaced, Session, Shelf, ShelvesDoc, Stamped};
 
 pub const STORE_DIR: &str = ".readlet";
-const DEVICES_DIR: &str = "devices";
+pub const DEVICES_DIR: &str = "devices";
+const DEVICE_FILE: &str = "device.json";
 const BOOKS_DIR: &str = "books";
 const SESSIONS_DIR: &str = "sessions";
 const COVERS_DIR: &str = "covers";
-const OPEN_SESSION: &str = "open.json";
+const CARDS_DIR: &str = "cards";
+const CATALOG_FILE: &str = "catalog.json";
+/// The session in progress. Only this device ever reads it, so it isn't synced.
+pub const OPEN_SESSION: &str = "open.json";
 
 /// What kind of reading data a changed file holds; used to tell the UI what to reload.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,6 +55,8 @@ pub enum StoreChange {
     Profile,
     Shelves,
     Resurfaced,
+    /// Which books another device has, or what it's called.
+    Catalog,
 }
 
 /// A batch of changes made by other devices, as sent to the UI.
@@ -59,6 +68,7 @@ pub struct StoreChanges {
     pub profile: bool,
     pub shelves: bool,
     pub resurfaced: bool,
+    pub catalog: bool,
 }
 
 impl StoreChanges {
@@ -73,12 +83,36 @@ impl StoreChanges {
             StoreChange::Profile => self.profile = true,
             StoreChange::Shelves => self.shelves = true,
             StoreChange::Resurfaced => self.resurfaced = true,
+            StoreChange::Catalog => self.catalog = true,
         }
     }
 
     pub fn is_empty(&self) -> bool {
         self == &Self::default()
     }
+}
+
+/// A device with a folder in the store.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Device {
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Serialize, Deserialize)]
+struct DeviceDoc {
+    name: String,
+}
+
+/// Where one device last was in a book.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DevicePosition {
+    pub device: Device,
+    /// This device's own position.
+    pub own: bool,
+    pub progress: Progress,
 }
 
 pub struct Store {
@@ -97,24 +131,56 @@ impl Store {
             device_id: device_id.to_owned(),
             books: Mutex::new(None),
         };
-        let own = store.own_dir();
-        fs::create_dir_all(own.join(BOOKS_DIR))?;
-        let device_file = own.join("device.json");
-        let device = serde_json::json!({ "name": device_name });
-        if fsutil::read_json::<serde_json::Value>(&device_file)
-            .ok()
-            .flatten()
-            .as_ref()
-            != Some(&device)
-        {
-            fsutil::write_json(&device_file, &device)?;
-        }
+        fs::create_dir_all(store.own_dir().join(BOOKS_DIR))?;
+        store.rename_device(device_name)?;
         store.recover_open_session()?;
         Ok(store)
     }
 
+    /// The folder holding every device's folder, which sync mirrors.
+    pub fn devices_dir(&self) -> &Path {
+        &self.devices_dir
+    }
+
+    pub fn device_id(&self) -> &str {
+        &self.device_id
+    }
+
     fn own_dir(&self) -> PathBuf {
         self.devices_dir.join(&self.device_id)
+    }
+
+    /// Writes this device's name next to its data, if it changed.
+    pub fn rename_device(&self, name: &str) -> Result<()> {
+        let path = self.own_dir().join(DEVICE_FILE);
+        let current = fsutil::read_json::<DeviceDoc>(&path).ok().flatten();
+        if current.is_none_or(|doc| doc.name != name) {
+            fsutil::write_json(
+                &path,
+                &DeviceDoc {
+                    name: name.to_owned(),
+                },
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Every device with a folder here, this one included, by name.
+    pub fn devices(&self) -> Vec<Device> {
+        let mut devices: Vec<Device> = self
+            .device_dirs()
+            .iter()
+            .filter_map(|dir| {
+                let id = dir.file_name()?.to_str()?.to_owned();
+                let name = Self::read_doc::<DeviceDoc>(&dir.join(DEVICE_FILE))
+                    .map(|doc| doc.name.trim().to_owned())
+                    .filter(|name| !name.is_empty())
+                    .unwrap_or_else(|| "Another device".to_owned());
+                Some(Device { id, name })
+            })
+            .collect();
+        devices.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.id.cmp(&b.id)));
+        devices
     }
 
     /// Every device folder, this one included.
@@ -242,6 +308,26 @@ impl Store {
         Ok(merged)
     }
 
+    /// Where each device last was in a book, the most recent first. The merged record only keeps
+    /// the newest position; this keeps them apart so the reader can be told where the others are.
+    pub fn positions(&self, fingerprint: &str) -> Vec<DevicePosition> {
+        let mut positions: Vec<DevicePosition> = self
+            .devices()
+            .into_iter()
+            .filter_map(|device| {
+                let dir = self.devices_dir.join(&device.id);
+                let record = Self::read_doc::<BookRecord>(&Self::book_file(&dir, fingerprint))?;
+                Some(DevicePosition {
+                    own: device.id == self.device_id,
+                    progress: record.progress?,
+                    device,
+                })
+            })
+            .collect();
+        positions.sort_by_key(|p| std::cmp::Reverse(p.progress.updated_at));
+        positions
+    }
+
     /// Drops cached records after another device's files changed.
     pub fn invalidate_books(&self, fingerprints: &[String]) {
         let mut cache = self.books.lock().unwrap_or_else(|e| e.into_inner());
@@ -290,6 +376,68 @@ impl Store {
         if let Some(path) = self.cover_file(fingerprint, rel).filter(|_| own) {
             let _ = fs::remove_file(path);
         }
+    }
+
+    // -- Catalogs --------------------------------------------------------------------------------
+
+    /// This device's catalog of its books, as last written.
+    pub fn own_catalog<T: DeserializeOwned>(&self) -> Option<T> {
+        Self::read_doc(&self.own_dir().join(CATALOG_FILE))
+    }
+
+    /// Writes this device's catalog. Returns false (and writes nothing) when it hasn't changed,
+    /// so a sync tool isn't handed the same file again.
+    pub fn write_catalog<T: Serialize + PartialEq + DeserializeOwned>(
+        &self,
+        doc: &T,
+    ) -> Result<bool> {
+        if self.own_catalog::<T>().as_ref() == Some(doc) {
+            return Ok(false);
+        }
+        fsutil::write_json(&self.own_dir().join(CATALOG_FILE), doc)?;
+        Ok(true)
+    }
+
+    /// The other devices' catalogs, each with its device.
+    pub fn other_catalogs<T: DeserializeOwned>(&self) -> Vec<(Device, T)> {
+        self.devices()
+            .into_iter()
+            .filter(|device| device.id != self.device_id)
+            .filter_map(|device| {
+                let doc = Self::read_doc(&self.devices_dir.join(&device.id).join(CATALOG_FILE))?;
+                Some((device, doc))
+            })
+            .collect()
+    }
+
+    /// Where this device keeps the small cover it shares for a book.
+    pub fn own_card_path(&self, fingerprint: &str) -> PathBuf {
+        self.own_dir()
+            .join(CARDS_DIR)
+            .join(format!("{fingerprint}.jpg"))
+    }
+
+    /// The books this device shares a small cover for.
+    pub fn own_card_fingerprints(&self) -> Vec<String> {
+        let Ok(entries) = fs::read_dir(self.own_dir().join(CARDS_DIR)) else {
+            return vec![];
+        };
+        entries
+            .filter_map(|e| e.ok())
+            .filter_map(|e| {
+                let name = e.file_name();
+                let fp = name.to_str()?.strip_suffix(".jpg")?;
+                fingerprint::is_valid(fp).then(|| fp.to_owned())
+            })
+            .collect()
+    }
+
+    /// A small cover another device (or this one) shares for a book it has.
+    pub fn card_cover(&self, fingerprint: &str) -> Option<PathBuf> {
+        self.device_dirs()
+            .into_iter()
+            .map(|dir| dir.join(CARDS_DIR).join(format!("{fingerprint}.jpg")))
+            .find(|path| path.is_file())
     }
 
     // -- Profile and shelves -------------------------------------------------------------------
@@ -445,9 +593,41 @@ impl Store {
             ["profile.json"] => Some(StoreChange::Profile),
             ["shelves.json"] => Some(StoreChange::Shelves),
             ["resurfaced.jsonl"] => Some(StoreChange::Resurfaced),
+            [CATALOG_FILE] | [DEVICE_FILE] => Some(StoreChange::Catalog),
+            [CARDS_DIR, file] => {
+                let fp = file.strip_suffix(".jpg")?;
+                fingerprint::is_valid(fp).then_some(StoreChange::Catalog)
+            }
             _ => None,
         }
     }
+}
+
+/// Whether `rel` (a `/`-separated path inside the devices folder) is reading data that syncs
+/// between devices. Paths from a sync service are checked with this before anything is written,
+/// so a remote listing can't place files anywhere else. The session in progress stays local.
+pub fn is_synced_file(rel: &str) -> bool {
+    let parts: Vec<&str> = rel.split('/').collect();
+    let Some((device, rest)) = parts.split_first() else {
+        return false;
+    };
+    let digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+    let fingerprinted =
+        |file: &str, suffix: &str| file.strip_suffix(suffix).is_some_and(fingerprint::is_valid);
+    is_valid_device_id(device)
+        && match rest {
+            [DEVICE_FILE | CATALOG_FILE | "profile.json" | "shelves.json" | "resurfaced.jsonl"] => {
+                true
+            }
+            [BOOKS_DIR, file] => fingerprinted(file, ".json"),
+            [CARDS_DIR, file] => fingerprinted(file, ".jpg"),
+            [COVERS_DIR, file] => file
+                .strip_suffix(".jpg")
+                .and_then(|stem| stem.split_once('-'))
+                .is_some_and(|(fp, stamp)| fingerprint::is_valid(fp) && digits(stamp)),
+            [SESSIONS_DIR, file] => file.strip_suffix(".jsonl").is_some_and(digits),
+            _ => false,
+        }
 }
 
 /// The size and modification time of every file other devices have written. Comparing two
@@ -793,6 +973,104 @@ mod tests {
         assert_eq!(phone.book(FP).annotations.len(), 1);
 
         assert!(phone.changes_between(&after, &phone.snapshot()).is_empty());
+    }
+
+    #[test]
+    fn keeps_each_devices_position_apart() {
+        let dir = tempfile::tempdir().unwrap();
+        let laptop = Store::open(dir.path(), LAPTOP, "Laptop").unwrap();
+        let phone = Store::open(dir.path(), DESKTOP, "Pixel 8").unwrap();
+        let at = |fraction: f64, updated_at: i64| {
+            move |r: &mut BookRecord| {
+                r.progress = Some(Progress {
+                    cfi: "epubcfi(/6/2)".into(),
+                    fraction,
+                    label: None,
+                    updated_at,
+                });
+                Ok(())
+            }
+        };
+        laptop.update_book(FP, at(0.2, 10)).unwrap();
+        phone.update_book(FP, at(0.5, 20)).unwrap();
+        let positions = laptop.positions(FP);
+        let summary: Vec<_> = positions
+            .iter()
+            .map(|p| (p.device.name.as_str(), p.own, p.progress.fraction))
+            .collect();
+        assert_eq!(summary, [("Pixel 8", false, 0.5), ("Laptop", true, 0.2)]);
+        assert!(
+            laptop
+                .positions("ffffffffffffffffffffffffffffffff")
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn names_devices_and_renames_this_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let laptop = Store::open(dir.path(), LAPTOP, "fedora").unwrap();
+        Store::open(dir.path(), DESKTOP, "Pixel 8").unwrap();
+        laptop.rename_device("Laptop").unwrap();
+        let names: Vec<_> = laptop.devices().into_iter().map(|d| d.name).collect();
+        assert_eq!(names, ["Laptop", "Pixel 8"]);
+    }
+
+    #[test]
+    fn catalogs_are_written_only_when_they_change() {
+        let dir = tempfile::tempdir().unwrap();
+        let laptop = Store::open(dir.path(), LAPTOP, "Laptop").unwrap();
+        let phone = Store::open(dir.path(), DESKTOP, "Pixel 8").unwrap();
+        let doc = serde_json::json!({ "books": { FP: { "title": "Dune" } } });
+        assert!(phone.write_catalog(&doc).unwrap());
+        assert!(!phone.write_catalog(&doc).unwrap());
+        let others: Vec<(Device, Value)> = laptop.other_catalogs();
+        assert_eq!(others.len(), 1);
+        assert_eq!(others[0].0.name, "Pixel 8");
+        assert_eq!(others[0].1["books"][FP]["title"], "Dune");
+        assert!(phone.other_catalogs::<Value>().is_empty());
+
+        let card = phone.own_card_path(FP);
+        fs::create_dir_all(card.parent().unwrap()).unwrap();
+        fs::write(&card, b"jpeg").unwrap();
+        assert_eq!(phone.own_card_fingerprints(), [FP]);
+        assert_eq!(laptop.card_cover(FP), Some(card));
+        assert_eq!(
+            laptop.classify(
+                &dir.path()
+                    .join(".readlet/devices")
+                    .join(DESKTOP)
+                    .join("catalog.json")
+            ),
+            Some(StoreChange::Catalog)
+        );
+    }
+
+    #[test]
+    fn knows_which_files_sync() {
+        for synced in [
+            format!("{LAPTOP}/books/{FP}.json"),
+            format!("{LAPTOP}/covers/{FP}-17.jpg"),
+            format!("{LAPTOP}/cards/{FP}.jpg"),
+            format!("{LAPTOP}/sessions/2026.jsonl"),
+            format!("{LAPTOP}/device.json"),
+            format!("{LAPTOP}/catalog.json"),
+            format!("{LAPTOP}/shelves.json"),
+        ] {
+            assert!(is_synced_file(&synced), "{synced}");
+        }
+        for local in [
+            format!("{LAPTOP}/sessions/open.json"),
+            format!("{LAPTOP}/books/.{FP}.json.12.tmp"),
+            format!("{LAPTOP}/books/../../{FP}.json"),
+            format!("../{LAPTOP}/profile.json"),
+            format!("{LAPTOP}/notes.txt"),
+            format!("{LAPTOP}/covers/{FP}-x.jpg"),
+            "not-a-device/profile.json".to_owned(),
+            String::new(),
+        ] {
+            assert!(!is_synced_file(&local), "{local}");
+        }
     }
 
     #[test]

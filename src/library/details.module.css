@@ -69,6 +69,13 @@
   color: var(--haze);
 }
 
+.elsewhere {
+  flex-basis: 100%;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--haze);
+}
+
 .section {
   display: flex;
   flex-direction: column;

@@ -11,9 +11,9 @@ import { api, toAppError } from '../lib/ipc'
 import { pickFolder } from '../lib/platform'
 import { HIGHLIGHT_COLORS, type Annotation, type HighlightColor } from '../lib/types'
 import { openBook } from '../library/actions'
-import type { LibraryBook } from '../library/model'
+import { elsewhereLabel, type LibraryBook } from '../library/model'
 import { useApp } from '../state/app'
-import { useLibraryBooks, useVisibleShelves } from '../state/library'
+import { useAllBooks, useVisibleShelves } from '../state/library'
 import { showError, useToasts } from '../state/toasts'
 import { useAuraFor, useColorScheme } from '../theme/aura'
 import styles from './highlights.module.css'
@@ -27,7 +27,7 @@ import {
 
 /** Every highlight in one place, with filters, search and Markdown export (docs/PLAN.md §6). */
 export function HighlightsView({ initialBook }: { initialBook?: string }) {
-  const books = useLibraryBooks()
+  const books = useAllBooks()
   const shelves = useVisibleShelves()
   const setSettingsOpen = useApp((s) => s.setSettingsOpen)
   const dark = useColorScheme() === 'dark'
@@ -258,9 +258,13 @@ function BookGroup({
           <h2 className={styles.groupTitle}>{book.title}</h2>
           {author && <div className={styles.muted}>{author}</div>}
         </div>
-        <Button size="small" onClick={() => openBook(book)}>
-          Open book
-        </Button>
+        {book.elsewhere ? (
+          <span className={styles.muted}>{elsewhereLabel(book.elsewhere)}</span>
+        ) : (
+          <Button size="small" onClick={() => openBook(book)}>
+            Open book
+          </Button>
+        )}
       </div>
       <div className={styles.items}>
         {highlights.map((h) => (

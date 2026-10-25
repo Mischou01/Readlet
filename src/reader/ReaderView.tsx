@@ -58,6 +58,7 @@ import styles from './reader.module.css'
 import { SearchSheet } from './SearchSheet'
 import { TextSettingsSheet } from './TextSettingsSheet'
 import { readerChromeVars, resolveReadingTheme } from './themes'
+import { useDevicePositions } from './devicePositions'
 import { useBookPace } from './useBookPace'
 import { useReadAloud } from './useReadAloud'
 import { useReaderControls } from './useReaderControls'
@@ -264,8 +265,11 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
 
   const recordRef = useLatest(record)
   const statusChecked = useRef(false)
+  /** When the reader last moved in the book here, to tell news from other devices from old. */
+  const movedAt = useRef(0)
   const onRelocate = useCallback(
     (loc: Location, pages: SectionPages | null) => {
+      movedAt.current = Date.now()
       setLocation(loc)
       setSectionPages(pages)
       const label = chapterLabel(tocRef.current, loc.tocItem)
@@ -311,6 +315,16 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
     },
     [fingerprint, saveProgressSoon, session, paceRelocated, recordRef],
   )
+
+  // Where the reader's other devices are in this book.
+  const locationRef = useLatest(location)
+  useDevicePositions({
+    fingerprint,
+    shown: location !== null,
+    target,
+    current: () => ({ fraction: locationRef.current?.fraction ?? 0, movedAt: movedAt.current }),
+    goTo: (cfi) => void handle.current?.goTo(cfi),
+  })
 
   // Flush progress and the session when leaving the book or closing the window.
   useEffect(() => {

@@ -657,6 +657,43 @@
   padding-bottom: 0;
 }
 
+/* Books only other devices have: shown, but plainly not here. */
+[data-elsewhere] [data-cover] {
+  opacity: 0.62;
+  filter: saturate(0.75);
+}
+
+.rowSeries > svg {
+  margin-right: 5px;
+  vertical-align: -2px;
+}
+
+/* "On your other devices", which folds away. */
+.foldButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: -4px;
+  padding: 2px 4px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  font: inherit;
+}
+
+.foldButton:hover {
+  background: var(--hover);
+}
+
+.foldButton svg {
+  transition: transform var(--duration) var(--ease-out);
+}
+
+.foldButton[aria-expanded='true'] svg {
+  transform: rotate(90deg);
+}
+
 .rowSeries {
   display: block;
   margin-top: 1px;

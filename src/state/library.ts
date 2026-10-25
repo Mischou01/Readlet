@@ -8,16 +8,19 @@ import type {
   AppError,
   BookEntry,
   BookRecord,
+  ElsewhereBook,
   ReadingStatus,
   ScanReport,
   Shelf,
 } from '../lib/types'
-import { joinLibrary, type LibraryBook } from '../library/model'
+import { joinElsewhere, joinLibrary, type LibraryBook } from '../library/model'
 import { scanChanges, scanMessage } from '../library/scanChanges'
 import { showError, useToasts } from './toasts'
 
 interface LibraryState {
   books: Record<string, BookEntry>
+  /** Books other devices have; those this one has too are left out where they're shown. */
+  elsewhere: Record<string, ElsewhereBook>
   records: Record<string, BookRecord>
   shelves: Shelf[]
   loaded: boolean
@@ -33,6 +36,7 @@ interface LibraryState {
   /** Reloads some books, whose edited details may have changed on another device. */
   refreshBooksById: (fingerprints: string[]) => Promise<void>
   refreshShelves: () => Promise<void>
+  refreshElsewhere: () => Promise<void>
   putBook: (entry: BookEntry) => void
   putRecord: (record: BookRecord) => void
   /** Drops books the reader deleted (see `expectDeleted`). */
@@ -75,6 +79,7 @@ function byFingerprint<T extends { fingerprint: string }>(items: T[]): Record<st
 
 export const useLibrary = create<LibraryState>((set, get) => ({
   books: {},
+  elsewhere: {},
   records: {},
   shelves: [],
   loaded: false,
@@ -84,13 +89,19 @@ export const useLibrary = create<LibraryState>((set, get) => ({
   error: null,
   load: async () => {
     try {
-      const [books, records, shelves] = await Promise.all([
+      const [books, records, shelves, elsewhere] = await Promise.all([
         api.listBooks(),
         api.listRecords(),
         api.listShelves(),
+        // Other devices' books are a bonus: the library opens without them.
+        api.listElsewhereBooks().catch((e: unknown) => {
+          console.warn('listing other devices’ books failed', toAppError(e))
+          return []
+        }),
       ])
       set({
         books: byFingerprint(books),
+        elsewhere: byFingerprint(elsewhere),
         records: byFingerprint(records),
         shelves,
         loaded: true,
@@ -103,6 +114,7 @@ export const useLibrary = create<LibraryState>((set, get) => ({
   reset: () =>
     set({
       books: {},
+      elsewhere: {},
       records: {},
       shelves: [],
       loaded: false,
@@ -128,6 +140,7 @@ export const useLibrary = create<LibraryState>((set, get) => ({
     set((s) => ({ books: { ...s.books, ...byFingerprint(fresh) } }))
   },
   refreshShelves: async () => set({ shelves: await api.listShelves() }),
+  refreshElsewhere: async () => set({ elsewhere: byFingerprint(await api.listElsewhereBooks()) }),
   putBook: (entry) => set((s) => ({ books: { ...s.books, [entry.fingerprint]: entry } })),
   putRecord: (record) => set((s) => ({ records: { ...s.records, [record.fingerprint]: record } })),
   removeBooks: (fingerprints) => {
@@ -175,8 +188,27 @@ export function useLibraryBooks(): LibraryBook[] {
   return useMemo(() => joinLibrary(books, records), [books, records])
 }
 
+/** The books only other devices have, joined with their reading data. */
+export function useElsewhereBooks(): LibraryBook[] {
+  const books = useLibrary((s) => s.books)
+  const elsewhere = useLibrary((s) => s.elsewhere)
+  const records = useLibrary((s) => s.records)
+  return useMemo(() => joinElsewhere(elsewhere, books, records), [elsewhere, books, records])
+}
+
+/**
+ * This device's books and the other devices', for what reading data shows wherever it was
+ * read: stats and highlights. The library itself keeps the two apart.
+ */
+export function useAllBooks(): LibraryBook[] {
+  const local = useLibraryBooks()
+  const elsewhere = useElsewhereBooks()
+  return useMemo(() => [...local, ...elsewhere], [local, elsewhere])
+}
+
+/** One book, wherever it is (`elsewhere` says when it's only on other devices). */
 export function useLibraryBook(fingerprint: string | undefined): LibraryBook | null {
-  const books = useLibraryBooks()
+  const books = useAllBooks()
   return useMemo(
     () => books.find((b) => b.fingerprint === fingerprint) ?? null,
     [books, fingerprint],

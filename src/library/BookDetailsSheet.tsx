@@ -9,6 +9,7 @@ import {
   formatDay,
   formatFileSize,
   formatIdentifier,
+  formatList,
   formatLanguage,
   formatPercent,
   formatPublished,
@@ -71,7 +72,12 @@ export function BookDetailsSheet({ fingerprint }: { fingerprint: string }) {
   const folded = long && !unfolded
   const identifier = entry.identifier ? formatIdentifier(entry.identifier) : null
   const facts: [string, string][] = [
-    ['Format', `${entry.format.toUpperCase()} · ${formatFileSize(entry.size)}`],
+    [
+      'Format',
+      book.elsewhere
+        ? entry.format.toUpperCase()
+        : `${entry.format.toUpperCase()} · ${formatFileSize(entry.size)}`,
+    ],
     ...(entry.language ? [['Language', formatLanguage(entry.language)] as [string, string]] : []),
     ...(entry.publisher ? [['Publisher', entry.publisher] as [string, string]] : []),
     ...(entry.published
@@ -79,7 +85,7 @@ export function BookDetailsSheet({ fingerprint }: { fingerprint: string }) {
       : []),
     ...(identifier ? [['Identifier', identifier] as [string, string]] : []),
     ['Added', formatDay(entry.addedAt)],
-    ['File', entry.path],
+    ...(book.elsewhere ? [] : [['File', entry.path] as [string, string]]),
   ]
 
   if (editing) {
@@ -92,9 +98,12 @@ export function BookDetailsSheet({ fingerprint }: { fingerprint: string }) {
       onClose={close}
       style={{ top: 82 }}
       actions={
-        <IconButton label="Edit details" onClick={() => setEditing(true)}>
-          <PencilLine size={18} strokeWidth={1.8} aria-hidden="true" />
-        </IconButton>
+        // Details are edited where the book's file is.
+        book.elsewhere ? undefined : (
+          <IconButton label="Edit details" onClick={() => setEditing(true)}>
+            <PencilLine size={18} strokeWidth={1.8} aria-hidden="true" />
+          </IconButton>
+        )
       }
     >
       <div className={styles.head}>
@@ -125,7 +134,25 @@ export function BookDetailsSheet({ fingerprint }: { fingerprint: string }) {
         </div>
       </div>
 
-      {entry.drm ? (
+      {book.elsewhere ? (
+        <div className={styles.actions}>
+          <p className={styles.elsewhere}>
+            On {formatList(book.elsewhere)}. Put the book’s file in this device’s books folder to
+            read it here.
+          </p>
+          {book.highlights.length > 0 && (
+            <Button
+              size="small"
+              icon={<Highlighter size={16} strokeWidth={1.8} aria-hidden="true" />}
+              onClick={() =>
+                useApp.getState().navigate({ name: 'highlights', book: book.fingerprint })
+              }
+            >
+              {pluralize(book.highlights.length, 'highlight')}
+            </Button>
+          )}
+        </div>
+      ) : entry.drm ? (
         <p className={styles.drm}>
           This book is protected by DRM, so Readlet can’t open it. A DRM-free copy from the store
           will open here.
@@ -204,26 +231,28 @@ export function BookDetailsSheet({ fingerprint }: { fingerprint: string }) {
         ))}
       </dl>
 
-      <div className={styles.footer}>
-        {!isAndroid && (
+      {!book.elsewhere && (
+        <div className={styles.footer}>
+          {!isAndroid && (
+            <Button
+              size="small"
+              variant="quiet"
+              icon={<FolderOpen size={16} strokeWidth={1.8} aria-hidden="true" />}
+              onClick={() => void revealBook(book.fingerprint)}
+            >
+              Show in folder
+            </Button>
+          )}
           <Button
             size="small"
-            variant="quiet"
-            icon={<FolderOpen size={16} strokeWidth={1.8} aria-hidden="true" />}
-            onClick={() => void revealBook(book.fingerprint)}
+            variant="danger"
+            icon={<Trash2 size={16} strokeWidth={1.8} aria-hidden="true" />}
+            onClick={() => useApp.getState().confirmDelete({ fingerprints: [book.fingerprint] })}
           >
-            Show in folder
+            Delete…
           </Button>
-        )}
-        <Button
-          size="small"
-          variant="danger"
-          icon={<Trash2 size={16} strokeWidth={1.8} aria-hidden="true" />}
-          onClick={() => useApp.getState().confirmDelete({ fingerprints: [book.fingerprint] })}
-        >
-          Delete…
-        </Button>
-      </div>
+        </div>
+      )}
     </Sheet>
   )
 }

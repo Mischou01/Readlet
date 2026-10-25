@@ -43,6 +43,9 @@ notify = "8"
 notify-debouncer-full = "0.7"
 # Deleting a book moves it to the trash, where it can be restored. Android has no trash for files.
 trash = { version = "5.2", default-features = false, features = ["coinit_apartmentthreaded"] }
+# Keeping the sync token in the system keyring (Secret Service, Keychain, Credential Manager).
+# Android keeps it with its own keystore instead (sync/secret.rs).
+keyring = "4.2"
 
 [target.'cfg(target_os = "android")'.dependencies]
 # The device's model name, for naming its data folder.

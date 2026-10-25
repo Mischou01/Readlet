@@ -4,6 +4,7 @@
 #[cfg(any(target_os = "android", test))]
 mod android;
 mod aura;
+mod cards;
 mod catalog;
 mod commands;
 mod covers;
@@ -18,6 +19,7 @@ mod protocol;
 mod settings;
 mod state;
 mod store;
+mod sync;
 mod tts;
 
 use tauri::Manager;
@@ -56,6 +58,7 @@ pub fn run() {
                     log::warn!("couldn't open the library folder: {e}");
                 }
             }
+            app.state::<AppState>().sync.start(handle);
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -64,25 +67,34 @@ pub fn run() {
             #[cfg(mobile)]
             match event {
                 tauri::WindowEvent::Resumed => {
-                    window.state::<AppState>().catch_up(window.app_handle());
+                    let state = window.state::<AppState>();
+                    state.catch_up(window.app_handle());
+                    state.sync.set_foreground(true);
                 }
-                // The system may stop the app from here on: the UI saves what it has.
+                // The system may stop the app from here on: the UI saves what it has, and sync
+                // sends it while it can.
                 tauri::WindowEvent::Suspended => {
                     use tauri::Emitter;
                     let _ = window.emit(state::events::APP_SUSPENDED, ());
+                    window.state::<AppState>().sync.set_foreground(false);
                 }
                 _ => {}
             }
+            // Coming back to the window, the reader may have read on another device meanwhile.
             #[cfg(desktop)]
-            let _ = (window, event);
+            if let tauri::WindowEvent::Focused(true) = event {
+                window.state::<AppState>().sync.refresh();
+            }
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_app_info,
+            commands::set_device_name,
             commands::set_preferences,
             commands::choose_library,
             commands::rescan_library,
             commands::list_books,
             commands::get_books,
+            commands::list_elsewhere_books,
             commands::books_needing_metadata,
             commands::set_book_metadata,
             commands::set_book_cover,
@@ -99,6 +111,7 @@ pub fn run() {
             commands::reveal_book,
             commands::list_records,
             commands::get_record,
+            commands::get_positions,
             commands::set_progress,
             commands::set_status,
             commands::put_annotation,
@@ -115,6 +128,11 @@ pub fn run() {
             commands::list_resurfaced,
             commands::log_resurfaced,
             commands::export_markdown,
+            commands::sync_status,
+            commands::connect_kdrive,
+            commands::disconnect_sync,
+            commands::sync_now,
+            commands::sync_soon,
             tts::tts_voices,
             tts::tts_speak,
             tts::tts_stop,
