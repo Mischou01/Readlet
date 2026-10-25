@@ -67,6 +67,12 @@ Readlet can't truthfully say "no DRM-free edition exists". What is known:
 
 ### 1. Find books
 
+**Status (2026-10-25):** built (`src-tauri/src/catalog.rs`, `src/library/FindBooksSheet.tsx`),
+with Project Gutenberg only. Its OPDS search lists a book's id, title and author; the download is
+`/ebooks/<id>.epub3.images`, which redirects within www.gutenberg.org. Results show the first page
+(25). Store links: Kobo, Baen and Weightless Books searches, Smashwords' home page (its search
+now asks to log in) and Libreture's directory; Humble Bundle has no search to link to.
+
 **Where:** under the library search results, a row **"Search online for ‘…’"**. It searches only
 when tapped (keeps PLAN §8). Results open in a sheet: a bottom sheet on phones, a side sheet on
 the desktop, like the other sheets.
@@ -118,12 +124,20 @@ the desktop, like the other sheets.
 
 Also a **Reset to the book's own details** action, since the extracted values stay in the index.
 
+**Status (2026-10-25):** built: "Edit details", choosing a cover, "Find details online"
+(`src-tauri/src/lookup.rs`, `src/library/EditDetailsForm.tsx`, `FindDetails.tsx`) and the reset.
+The search asks for each work's best-matching edition; picking one fetches the edition (series,
+publisher, date, language, ISBN, cover) and the work (description). Found values fill the form,
+only those ticked, and nothing is saved until Save. A chosen cover's thumbnail is stored in this
+device's `.readlet/devices/<id>/covers/`, and the record's `cover` detail points at it.
+
 **Storage:**
 
-- **Per-field values with a timestamp each** in the book's record in `.readlet/` (for example
-  `metadata: { title: Stamped<string>, authors: Stamped<string[]>, … }` in `BookRecord`,
-  `src-tauri/src/store/model.rs`). Two devices editing different fields then both keep their
-  edits; the same field: the newest wins, as with status.
+- **Per-field values with a timestamp each** in the book's record in `.readlet/`:
+  `details: { title: Stamped<Value>, … }` in `BookRecord` (`src-tauri/src/store/model.rs`), where
+  a null value leaves the field blank. Two devices editing different fields then both keep their
+  edits; the same field: the newest wins, as with status. A reset stores `detailsResetAt`, and
+  edits from before it no longer apply.
 - `merge_books` (`src-tauri/src/store/merge.rs`) builds the merged record field by field, so the
   new field has to be merged there explicitly. It doesn't come along on its own.
 - **Apply the edits in Rust**, where `list_books` / `book_entry` build `BookEntry`. Several
@@ -147,7 +161,13 @@ Also a **Reset to the book's own details** action, since the extracted values st
 - **Settings and docs:** update the README's "only feature that uses the network" line, the
   Dictionary hint in Settings, and add decisions to PLAN §9.
 
-## Decisions still open (with my recommendation)
+## Decisions (open ones with my recommendation)
+
+Taken while building (2026-10-25): 1 (only on tapping), 3 (the list in "Find books" above),
+4 (only in `.readlet/`) and 6 (details first). Requests go through `src-tauri/src/net.rs`, which
+follows redirects by hand and only to Open Library, the Internet Archive's cover servers and
+www.gutenberg.org. The webview's `img-src` also allows those hosts, for result thumbnails.
+Still open: 2 and 5.
 
 1. **When to search online**: only on tapping "Search online" _(recommended)_, or automatically
    when a local search finds nothing, with a setting to turn that off.

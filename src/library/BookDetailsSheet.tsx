@@ -1,6 +1,6 @@
-import { FolderOpen, Highlighter, Play, Trash2 } from 'lucide-react'
+import { FolderOpen, Highlighter, PencilLine, Play, Trash2 } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
-import { Button } from '../components/Button'
+import { Button, IconButton } from '../components/Button'
 import { Cover } from '../components/Cover'
 import { ProgressBar } from '../components/Progress'
 import { Sheet } from '../components/Sheet'
@@ -23,6 +23,7 @@ import { useLibraryBook } from '../state/library'
 import { usePreferences } from '../state/preferences'
 import { openBook, revealBook } from './actions'
 import styles from './details.module.css'
+import { EditDetails } from './EditDetailsForm'
 import { seriesAnchor } from './model'
 
 /** Shows the library sorted by series, scrolled to this one. */
@@ -53,6 +54,7 @@ export function BookDetailsSheet({ fingerprint }: { fingerprint: string }) {
   const close = () => useApp.getState().showDetails(null)
   const cover = useRef<HTMLButtonElement>(null)
   const [unfolded, setUnfolded] = useState(false)
+  const [editing, setEditing] = useState(false)
   const description = book?.entry.description
   const paragraphs = useMemo(
     () => (description ? htmlToParagraphs(description) : []),
@@ -78,8 +80,21 @@ export function BookDetailsSheet({ fingerprint }: { fingerprint: string }) {
     ['File', entry.path],
   ]
 
+  if (editing) {
+    return <EditDetails entry={entry} onDone={() => setEditing(false)} />
+  }
+
   return (
-    <Sheet title="About this book" onClose={close} style={{ top: 82 }}>
+    <Sheet
+      title="About this book"
+      onClose={close}
+      style={{ top: 82 }}
+      actions={
+        <IconButton label="Edit details" onClick={() => setEditing(true)}>
+          <PencilLine size={18} strokeWidth={1.8} aria-hidden="true" />
+        </IconButton>
+      }
+    >
       <div className={styles.head}>
         <button
           ref={cover}

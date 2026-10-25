@@ -1,23 +1,26 @@
 //! The commands the UI can invoke. They validate input, then hand off to the library, index and
 //! store. Anything that touches the disk runs off the main thread.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Map, Value};
 use tauri::ipc::{InvokeBody, Request};
 use tauri::{AppHandle, Manager, State};
 
 use crate::aura::Palette;
+use crate::catalog::{self, FreeBook};
 use crate::covers;
 use crate::error::{Error, Result};
 use crate::fsutil::{self, now_ms};
-use crate::index::{BookEntry, BookMetadata};
+use crate::index::{BookEntry, BookMetadata, CoverEdit};
 use crate::library::fingerprint;
+use crate::lookup::{self, Candidate, FoundDetails};
 use crate::state::AppState;
 use crate::store::model::{
-    self, Annotation, BookRecord, Profile, Progress, Resurfaced, Session, Shelf, Stamped,
-    YearlyGoal,
+    self, Annotation, BookRecord, COVER_FIELD, Profile, Progress, Resurfaced, Session, Shelf,
+    Stamped, YearlyGoal,
 };
 
 /// Runs blocking work on the blocking thread pool.
@@ -117,11 +120,46 @@ pub async fn rescan_library(app: AppHandle, state: State<'_, AppState>) -> Resul
     Ok(())
 }
 
+/// Every book, with the details the reader edited applied.
 #[tauri::command]
 pub async fn list_books(app: AppHandle) -> Result<Vec<BookEntry>> {
     blocking(&app, |state| {
-        state.library()?;
-        state.index().books()
+        let records: HashMap<String, BookRecord> = state
+            .library()?
+            .store
+            .books()
+            .into_iter()
+            .map(|r| (r.fingerprint.clone(), r))
+            .collect();
+        let books = state.index().books()?;
+        Ok(books
+            .into_iter()
+            .map(|entry| match records.get(&entry.fingerprint) {
+                Some(record) => entry.with_edits(record),
+                None => entry,
+            })
+            .collect())
+    })
+    .await
+}
+
+/// Some books, for refreshing them after another device edited their details. Books that aren't
+/// in the library are left out.
+#[tauri::command]
+pub async fn get_books(app: AppHandle, fingerprints: Vec<String>) -> Result<Vec<BookEntry>> {
+    for fp in &fingerprints {
+        check_fingerprint(fp)?;
+    }
+    blocking(&app, move |state| {
+        let mut books = Vec::new();
+        for fp in fingerprints {
+            match book_entry(state, &fp) {
+                Ok(entry) => books.push(entry),
+                Err(Error::BookNotFound(_)) => {}
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(books)
     })
     .await
 }
@@ -132,10 +170,160 @@ pub async fn books_needing_metadata(app: AppHandle) -> Result<Vec<String>> {
 }
 
 fn book_entry(state: &AppState, fp: &str) -> Result<BookEntry> {
-    state
+    let entry = state
         .index()
         .book(fp)?
-        .ok_or_else(|| Error::BookNotFound(fp.to_owned()))
+        .ok_or_else(|| Error::BookNotFound(fp.to_owned()))?;
+    Ok(entry.with_edits(&state.library()?.store.book(fp)))
+}
+
+/// Changes some of a book's details (see `DETAIL_FIELDS`): a value per field, null to leave it
+/// blank. The book's file is never changed; the edits are reading data, so they sync.
+#[tauri::command]
+pub async fn set_book_details(
+    app: AppHandle,
+    fingerprint: String,
+    details: Map<String, Value>,
+) -> Result<BookEntry> {
+    check_fingerprint(&fingerprint)?;
+    let details = details
+        .into_iter()
+        .map(|(field, value)| Ok((field.clone(), BookMetadata::clean_field(&field, value)?)))
+        .collect::<Result<Vec<_>>>()?;
+    blocking(&app, move |state| {
+        if !state.index().contains(&fingerprint)? {
+            return Err(Error::BookNotFound(fingerprint));
+        }
+        let store = &state.library()?.store;
+        let previous = store.book(&fingerprint);
+        store.update_book(&fingerprint, |record| {
+            for (field, value) in details {
+                let before = previous.details.get(&field).map(|e| e.updated_at);
+                let updated_at = stamp_after(before.max(previous.details_reset_at));
+                record.details.insert(field, Stamped { value, updated_at });
+            }
+            Ok(())
+        })?;
+        book_entry(state, &fingerprint)
+    })
+    .await
+}
+
+/// Sets the cover the reader chose (`None`: no cover at all). The thumbnail goes in this device's
+/// folder in `.readlet/`, so the choice syncs with the record that points at it.
+fn save_chosen_cover(
+    state: &AppState,
+    fingerprint: &str,
+    image: Option<&[u8]>,
+) -> Result<BookEntry> {
+    if !state.index().contains(fingerprint)? {
+        return Err(Error::BookNotFound(fingerprint.to_owned()));
+    }
+    let store = &state.library()?.store;
+    let previous = store.book(fingerprint);
+    let previous_cover = previous.details.get(COVER_FIELD);
+    let updated_at = stamp_after(
+        previous_cover
+            .map(|e| e.updated_at)
+            .max(previous.details_reset_at),
+    );
+    let value = match image {
+        None => Value::Null,
+        Some(bytes) => {
+            let (file, path) = store.new_cover_path(fingerprint, updated_at);
+            let palette = covers::store_cover(bytes, &path)?;
+            serde_json::to_value(CoverEdit { file, palette })?
+        }
+    };
+    store.update_book(fingerprint, |record| {
+        record
+            .details
+            .insert(COVER_FIELD.to_owned(), Stamped { value, updated_at });
+        Ok(())
+    })?;
+    if let Some(old) = previous_cover.and_then(|e| e.value.get("file")?.as_str()) {
+        store.remove_own_cover(fingerprint, old);
+    }
+    book_entry(state, fingerprint)
+}
+
+/// Receives a cover the reader picked as the request body (an empty body means no cover), with
+/// the book's fingerprint in the `x-fingerprint` header.
+#[tauri::command]
+pub async fn choose_book_cover(app: AppHandle, request: Request<'_>) -> Result<BookEntry> {
+    let fingerprint = request
+        .headers()
+        .get("x-fingerprint")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned)
+        .ok_or_else(|| Error::invalid("missing book id"))?;
+    check_fingerprint(&fingerprint)?;
+    let bytes = body_bytes(request.body())?;
+    if bytes.len() > covers::MAX_COVER_BYTES {
+        return Err(Error::invalid("the cover is too large"));
+    }
+    blocking(&app, move |state| {
+        save_chosen_cover(
+            state,
+            &fingerprint,
+            (!bytes.is_empty()).then_some(&bytes[..]),
+        )
+    })
+    .await
+}
+
+/// Searches Open Library (docs/ONLINE.md): by ISBN when the query is one, by title and author
+/// otherwise.
+#[tauri::command]
+pub async fn search_book_details(app: AppHandle, query: String) -> Result<Vec<Candidate>> {
+    let query = model::limit_text(&query, 300);
+    blocking(&app, move |_| lookup::search(&query)).await
+}
+
+/// One Open Library edition's details, for the reader to pick from.
+#[tauri::command]
+pub async fn fetch_book_details(
+    app: AppHandle,
+    work: String,
+    edition: Option<String>,
+) -> Result<FoundDetails> {
+    blocking(&app, move |_| lookup::details(&work, edition.as_deref())).await
+}
+
+/// Downloads a cover from Open Library and makes it the book's cover.
+#[tauri::command]
+pub async fn choose_book_cover_online(
+    app: AppHandle,
+    fingerprint: String,
+    cover: u64,
+) -> Result<BookEntry> {
+    check_fingerprint(&fingerprint)?;
+    blocking(&app, move |state| {
+        let bytes = lookup::cover(cover)?;
+        save_chosen_cover(state, &fingerprint, Some(&bytes))
+    })
+    .await
+}
+
+/// Goes back to the details in the book's file, on every device.
+#[tauri::command]
+pub async fn reset_book_details(app: AppHandle, fingerprint: String) -> Result<BookEntry> {
+    check_fingerprint(&fingerprint)?;
+    blocking(&app, move |state| {
+        if !state.index().contains(&fingerprint)? {
+            return Err(Error::BookNotFound(fingerprint));
+        }
+        let store = &state.library()?.store;
+        let previous = store.book(&fingerprint);
+        let newest_edit = previous.details.values().map(|e| e.updated_at).max();
+        store.update_book(&fingerprint, |record| {
+            record.details_reset_at = Some(stamp_after(newest_edit.max(previous.details_reset_at)));
+            record.details.clear();
+            Ok(())
+        })?;
+        book_entry(state, &fingerprint)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -217,6 +405,41 @@ pub async fn add_books(app: AppHandle, paths: Vec<String>) -> Result<Vec<String>
     blocking(&app, move |state| {
         let sources: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
         let added = state.library()?.add_books(&sources)?;
+        if !added.is_empty() {
+            state.request_scan(&handle);
+        }
+        Ok(added)
+    })
+    .await
+}
+
+/// Searches Project Gutenberg for free books (docs/ONLINE.md).
+#[tauri::command]
+pub async fn search_free_books(app: AppHandle, query: String) -> Result<Vec<FreeBook>> {
+    let query = model::limit_text(&query, 300);
+    blocking(&app, move |_| catalog::search(&query)).await
+}
+
+/// Downloads a free book from Project Gutenberg into the library folder, as "Add books" would add
+/// it. Returns the name it was added under; none if an identical copy is already there.
+#[tauri::command]
+pub async fn download_free_book(
+    app: AppHandle,
+    id: u64,
+    title: String,
+    author: Option<String>,
+) -> Result<Vec<String>> {
+    let handle = app.clone();
+    blocking(&app, move |state| {
+        let library = state.library()?;
+        let name = catalog::file_name(id, &title, author.as_deref());
+        // A folder per download, so two at once never share a file.
+        let dir = state.paths.downloads.join(id.to_string());
+        std::fs::create_dir_all(&dir)?;
+        let file = dir.join(name);
+        let added = catalog::download(id, &file).and_then(|()| library.add_books(&[file]));
+        let _ = std::fs::remove_dir_all(&dir);
+        let added = added?;
         if !added.is_empty() {
             state.request_scan(&handle);
         }

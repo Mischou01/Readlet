@@ -154,3 +154,212 @@
   gap: 8px;
   margin-top: 16px;
 }
+
+/* Editing the details (EditDetailsForm.tsx). */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 4px;
+}
+
+.pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.6fr);
+  gap: 10px;
+}
+
+.hint {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--haze);
+}
+
+.formActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 4px;
+}
+
+.spacer {
+  flex: 1;
+}
+
+/* Authors: a line or two, not a paragraph. */
+.form .short {
+  min-height: 0;
+}
+
+.coverRow {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+}
+
+.coverButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Finding details online (FindDetails.tsx). */
+
+.find {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.find > button:first-child {
+  align-self: flex-start;
+}
+
+.searchRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.searchRow > button {
+  flex: none;
+}
+
+.findMessage {
+  padding: 12px 0;
+  font-size: 14px;
+  color: var(--haze);
+}
+
+.results,
+.compare {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--line);
+}
+
+.results > li,
+.compare > li {
+  border-bottom: 1px solid var(--line);
+}
+
+.result,
+.resultRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 4px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.result:hover {
+  background: var(--track);
+}
+
+.resultCover {
+  flex: none;
+  width: 40px;
+  height: 60px;
+  border-radius: 4px;
+  object-fit: cover;
+  background: var(--track);
+}
+
+.resultText,
+.compareText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.resultTitle {
+  font-size: 14.5px;
+  font-weight: 600;
+}
+
+.resultMeta,
+.compareNow {
+  font-size: 13px;
+  color: var(--haze);
+  overflow-wrap: anywhere;
+}
+
+.compareRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 0;
+  cursor: pointer;
+}
+
+.compareRow input {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  accent-color: var(--accent);
+}
+
+.compareLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--haze);
+}
+
+.compareFound {
+  font-size: 14.5px;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+}
+
+.compareNow {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.foundCover {
+  width: 60px;
+  height: 90px;
+  margin-top: 4px;
+  border-radius: 4px;
+  object-fit: cover;
+  background: var(--track);
+}
+
+/* A result with its own button (FindBooksSheet.tsx), rather than one big button. */
+.resultRow {
+  cursor: default;
+}
+
+/* Finding books online (FindBooksSheet.tsx). */
+
+.stores {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.stores h3 {
+  font-size: 14px;
+  font-weight: 600;
+}

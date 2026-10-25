@@ -30,6 +30,8 @@ interface LibraryState {
   reset: () => void
   refreshBooks: () => Promise<void>
   refreshRecords: (fingerprints?: string[]) => Promise<void>
+  /** Reloads some books, whose edited details may have changed on another device. */
+  refreshBooksById: (fingerprints: string[]) => Promise<void>
   refreshShelves: () => Promise<void>
   putBook: (entry: BookEntry) => void
   putRecord: (record: BookRecord) => void
@@ -120,6 +122,10 @@ export const useLibrary = create<LibraryState>((set, get) => ({
     }
     const fresh = await Promise.all(fingerprints.map((fp) => api.getRecord(fp)))
     set((s) => ({ records: { ...s.records, ...byFingerprint(fresh) } }))
+  },
+  refreshBooksById: async (fingerprints) => {
+    const fresh = await api.getBooks(fingerprints)
+    set((s) => ({ books: { ...s.books, ...byFingerprint(fresh) } }))
   },
   refreshShelves: async () => set({ shelves: await api.listShelves() }),
   putBook: (entry) => set((s) => ({ books: { ...s.books, [entry.fingerprint]: entry } })),

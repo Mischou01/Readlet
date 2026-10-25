@@ -31,6 +31,10 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png",
 zip = { version = "9", default-features = false, features = ["deflate"] }
 uuid = { version = "1", features = ["v4"] }
 walkdir = "2"
+# Finding book details and free books online (src/net.rs): blocking, with rustls, so no OpenSSL.
+ureq = "3.5"
+# Reading Project Gutenberg's OPDS catalogue (src/catalog.rs), and SSML on Android.
+quick-xml = "0.42"
 
 # Watching the folder is desktop-only: Android suspends apps in the background, so the library is
 # rescanned when the app comes back instead (docs/PLAN.md D17).
@@ -41,14 +45,11 @@ notify-debouncer-full = "0.7"
 trash = { version = "5.2", default-features = false, features = ["coinit_apartmentthreaded"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
-# Splitting SSML into sentences for Android's text-to-speech (src/tts/segments.rs).
-quick-xml = "0.42"
 # The device's model name, for naming its data folder.
 libc = "0.2"
 
 [dev-dependencies]
 tempfile = "3"
-quick-xml = "0.42"
 
 [profile.release]
 codegen-units = 1

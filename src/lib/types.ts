@@ -31,6 +31,8 @@ export interface BookEntry {
   published: string | null
   description: string | null
   identifier: string | null
+  /** The details the reader edited (as named in `BookMetadata`); the others are the book's own. */
+  edited: string[]
   coverVersion: number | null
   palette: Palette | null
 }
@@ -45,6 +47,43 @@ export interface BookMetadata {
   published?: string | null
   description?: string | null
   identifier?: string | null
+}
+
+/** Changes to a book's details: a value per changed field; null leaves the field blank. */
+export type BookDetailsPatch = {
+  [K in keyof BookMetadata]?: NonNullable<BookMetadata[K]> | null
+}
+
+/** A book Open Library knows, as listed in its search results (src-tauri/src/lookup.rs). */
+export interface FoundBook {
+  work: string
+  edition: string | null
+  title: string
+  authors: string[]
+  year: number | null
+  publisher: string | null
+  /** An Open Library cover id (see `openLibraryCover`). */
+  cover: number | null
+}
+
+/** One Open Library edition's details beyond the search result. */
+export interface FoundDetails {
+  series: string | null
+  seriesIndex: number | null
+  publisher: string | null
+  published: string | null
+  language: string | null
+  identifier: string | null
+  /** Plain text, paragraphs separated by blank lines. */
+  description: string | null
+  cover: number | null
+}
+
+/** A free book in Project Gutenberg's catalogue (src-tauri/src/catalog.rs). */
+export interface FreeBook {
+  id: number
+  title: string
+  author: string | null
 }
 
 export type ReadingStatus = 'reading' | 'toRead' | 'finished'
@@ -98,6 +137,10 @@ export interface BookRecord {
   progress: Progress | null
   status: Stamped<string> | null
   annotations: Annotation[]
+  /** Details the reader edited, by field; a null value leaves the field blank. */
+  details?: Record<string, Stamped<unknown>>
+  /** When the details were last reset to the book's own. */
+  detailsResetAt?: number
 }
 
 export interface Session {

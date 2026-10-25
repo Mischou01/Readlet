@@ -1,6 +1,7 @@
 //! Merging what every device wrote (docs/PLAN.md §4):
 //!
 //! - progress and status: the newest `updatedAt` wins
+//! - edited details: the newest edit of each field wins, and a reset drops the edits before it
 //! - annotations and shelves: the union by id; the newest version of each wins; deletions are
 //!   tombstones, so they win over older versions too
 //! - sessions: concatenated, deduplicated by id
@@ -9,13 +10,16 @@
 //! in which order the files are read.
 
 use std::cmp::Ordering;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
+
+use serde_json::Value;
 
 use super::model::{Annotation, BookRecord, Profile, Session, Shelf, Stamped};
 
 pub fn merge_books(fingerprint: &str, records: impl IntoIterator<Item = BookRecord>) -> BookRecord {
     let mut merged = BookRecord::new(fingerprint);
     let mut annotations: HashMap<String, Annotation> = HashMap::new();
+    let mut details: BTreeMap<String, Stamped<Value>> = BTreeMap::new();
     for record in records {
         merged.progress = newest(
             merged.progress,
@@ -28,6 +32,13 @@ pub fn merge_books(fingerprint: &str, records: impl IntoIterator<Item = BookReco
             },
         );
         merged.status = newest_stamped(merged.status, record.status, |a, b| a.cmp(b));
+        merged.details_reset_at = merged.details_reset_at.max(record.details_reset_at);
+        for (field, edit) in record.details {
+            let current = details.remove(&field);
+            if let Some(newest) = newest_stamped(current, Some(edit), content_cmp) {
+                details.insert(field, newest);
+            }
+        }
         for annotation in record.annotations {
             match annotations.get(&annotation.id) {
                 Some(existing) if !annotation_is_newer(&annotation, existing) => {}
@@ -44,6 +55,9 @@ pub fn merge_books(fingerprint: &str, records: impl IntoIterator<Item = BookReco
             .then_with(|| a.id.cmp(&b.id))
     });
     merged.annotations = annotations;
+    let reset_at = merged.details_reset_at.unwrap_or(i64::MIN);
+    details.retain(|_, edit| edit.updated_at > reset_at);
+    merged.details = details;
     merged
 }
 
@@ -254,6 +268,33 @@ mod tests {
             }],
         );
         assert!(!merged.annotations[0].deleted);
+    }
+
+    #[test]
+    fn details_merge_field_by_field_and_a_reset_drops_older_edits() {
+        let edit = |value: Value, updated_at: i64| Stamped { value, updated_at };
+        let laptop = BookRecord {
+            details: BTreeMap::from([
+                ("title".into(), edit("Old title".into(), 5)),
+                ("series".into(), edit("Expanse".into(), 6)),
+            ]),
+            ..BookRecord::new("fp")
+        };
+        let phone = BookRecord {
+            details: BTreeMap::from([("title".into(), edit("New title".into(), 9))]),
+            ..BookRecord::new("fp")
+        };
+        let merged = merge_books("fp", [laptop.clone(), phone.clone()]);
+        assert_eq!(merged.details["title"].value, "New title");
+        assert_eq!(merged.details["series"].value, "Expanse");
+
+        let reset = BookRecord {
+            details_reset_at: Some(8),
+            ..BookRecord::new("fp")
+        };
+        let merged = merge_books("fp", [laptop, reset, phone]);
+        assert_eq!(merged.details_reset_at, Some(8));
+        assert_eq!(merged.details.keys().collect::<Vec<_>>(), ["title"]);
     }
 
     #[test]

@@ -32,6 +32,8 @@ pub struct AppPaths {
     pub settings: PathBuf,
     pub index: PathBuf,
     pub covers: PathBuf,
+    /// Books being downloaded, before they're added to the library folder.
+    pub downloads: PathBuf,
 }
 
 impl AppPaths {
@@ -46,6 +48,7 @@ impl AppPaths {
             settings: config.join("settings.json"),
             index: data.join("index.sqlite3"),
             covers: cache.join("covers"),
+            downloads: cache.join("downloads"),
         })
     }
 }

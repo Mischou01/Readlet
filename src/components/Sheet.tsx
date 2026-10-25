@@ -89,7 +89,10 @@ export function Sheet({
         </div>
       </div>
       {toolbar && <div className={styles.sheetToolbar}>{toolbar}</div>}
-      <div className={styles.sheetBody}>{children}</div>
+      {/* A new title is a new page of the sheet (About → Edit details), which starts at the top. */}
+      <div key={title} className={styles.sheetBody}>
+        {children}
+      </div>
     </motion.aside>
   )
 }

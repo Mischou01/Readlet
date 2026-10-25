@@ -111,7 +111,7 @@ export function SettingsSheet() {
           <FieldLabel>Dictionary</FieldLabel>
           <Switch
             label="Look up words on Wiktionary"
-            hint={`Sends the word you look up to Wikimedia. Nothing else leaves this ${isAndroid ? 'phone' : 'computer'}.`}
+            hint="Sends the word you look up to Wikimedia. Finding a book’s details sends its title, author or ISBN to Open Library, and only when you ask."
             checked={prefs.onlineDictionary === true}
             onChange={(onlineDictionary) => update({ onlineDictionary })}
           />

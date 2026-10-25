@@ -20,6 +20,9 @@ pub enum Error {
     Tts(String),
     #[error("{0} isn't available on this device")]
     Unsupported(&'static str),
+    /// A site couldn't be reached, or answered with something unusable (see `net`).
+    #[error("{0}")]
+    Network(String),
     /// A call into the Android side of the app failed.
     #[cfg(mobile)]
     #[error("{0}")]
@@ -54,6 +57,7 @@ impl Error {
             Self::Image(_) => "image",
             Self::Tts(_) => "tts",
             Self::Unsupported(_) => "unsupported",
+            Self::Network(_) => "network",
             #[cfg(mobile)]
             Self::Native(_) => "native",
             Self::Io(_) => "io",

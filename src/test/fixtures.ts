@@ -23,6 +23,7 @@ export function entry(overrides: Partial<BookEntry> = {}): BookEntry {
     published: null,
     description: null,
     identifier: null,
+    edited: [],
     coverVersion: null,
     palette: null,
     ...overrides,
