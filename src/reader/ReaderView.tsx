@@ -57,7 +57,7 @@ import { readingCss } from './readingStyles'
 import styles from './reader.module.css'
 import { SearchSheet } from './SearchSheet'
 import { TextSettingsSheet } from './TextSettingsSheet'
-import { readerChromeVars, resolveReadingTheme } from './themes'
+import { readerChromeVars, resolveReadingTheme, withAlpha } from './themes'
 import { useDevicePositions } from './devicePositions'
 import { useBookPace } from './useBookPace'
 import { useReadAloud } from './useReadAloud'
@@ -269,6 +269,9 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
   const movedAt = useRef(0)
   const onRelocate = useCallback(
     (loc: Location, pages: SectionPages | null) => {
+      // While a section is still being laid out, foliate can report a position with no fraction;
+      // the real one follows. Saving it would store NaN as the progress.
+      if (!Number.isFinite(loc.fraction)) return
       movedAt.current = Date.now()
       setLocation(loc)
       setSectionPages(pages)
@@ -706,6 +709,8 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
       return
     }
     if (mod || e.altKey) return
+    // Shift with an arrow extends a selection, which stays on the page.
+    if (e.shiftKey && e.key.startsWith('Arrow')) return
     switch (e.key) {
       case 'ArrowRight':
         h.goRight()
@@ -772,6 +777,12 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
 
   const goTo = (target: string) => {
     void handle.current?.goTo(target)
+    if (windowWidth < 900) setSheet(null)
+  }
+
+  /** A search result stays marked after the search closes, until the reader turns the page. */
+  const goToMatch = (cfi: string) => {
+    void handle.current?.showMatch(cfi, withAlpha(accent, 0.3))
     if (windowWidth < 900) setSheet(null)
   }
 
@@ -998,7 +1009,7 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
           <SearchSheet
             key="search"
             search={(q, onResult) => handle.current?.search(q, accent, onResult) ?? (() => {})}
-            onGoTo={goTo}
+            onGoTo={goToMatch}
             onClose={() => {
               handle.current?.clearSearch()
               setSheet(null)

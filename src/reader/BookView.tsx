@@ -15,6 +15,7 @@ import {
   type View,
   createView,
 } from './foliate'
+import { trimToPage } from './pageSelection'
 import { touchZoneAt, type TapZone } from './tapZones'
 import { chapterLabel } from './toc'
 import {
@@ -68,6 +69,11 @@ export interface BookViewHandle {
   goRight(): void
   /** Goes to a chapter (href or index) or a position (CFI). */
   goTo(target: string | number): Promise<void>
+  /**
+   * Goes to a search match (a CFI) and marks it in `color`. The mark, and the page it's on, hold
+   * through changes of layout (a sheet closing, a window resized) until the reader moves on.
+   */
+  showMatch(cfi: string, color: string): Promise<void>
   goToFraction(fraction: number): Promise<void>
   /** Streams search results, outlining matches in `color`; call the returned function to stop. */
   search(query: string, color: string, onResult: (result: SearchResult) => void): () => void
@@ -388,6 +394,8 @@ export function BookView(props: BookViewProps) {
   const ready = useRef(false)
   const marks = useRef(new Map<string, HighlightMark>())
   const speaking = useRef<string | null>(null)
+  /** The search match gone to, while it's marked. */
+  const found = useRef<{ cfi: string; range: Range | null } | null>(null)
   /** Where the zoom asked for by a pinch or Ctrl+wheel was centred, in the view. */
   const pendingFocus = useRef<{ x: number; y: number } | null>(null)
   const callbacks = useLatest(props)
@@ -420,6 +428,44 @@ export function BookView(props: BookViewProps) {
   }
   const rtl = () => viewRef.current?.book.dir === 'rtl'
 
+  /** Takes a passing mark (read-aloud, a search match) off; a highlight it covered comes back. */
+  const unmark = (cfi: string) => {
+    const view = viewRef.current
+    if (!view) return
+    const mark = marks.current.get(cfi)
+    void (mark ? view.addAnnotation(markAnnotation(mark)) : view.deleteAnnotation({ value: cfi }))
+  }
+  const clearFound = () => {
+    if (found.current) unmark(found.current.cfi)
+    found.current = null
+  }
+
+  /** Goes to a chapter (href or index) or a position (CFI); for a CFI, returns its range. */
+  const goTo = async (target: string | number): Promise<Range | null> => {
+    const view = viewRef.current
+    if (!view) return null
+    const resolved =
+      typeof target === 'string' && target.startsWith('epubcfi(')
+        ? view.resolveNavigation(target)
+        : undefined
+    const anchor = resolved?.anchor
+    if (resolved && anchor && view.renderer.goTo) {
+      let range: Range | null = null
+      // Bookmarks saved before pageStart() skipped the space at a page break still land right.
+      await view.renderer.goTo({
+        index: resolved.index,
+        anchor: (doc) => {
+          const target = skipLeadingSpace(anchor(doc))
+          if ('startContainer' in target) range = target
+          return target
+        },
+      })
+      return range
+    }
+    await view.goTo(target)
+    return null
+  }
+
   useImperativeHandle(
     ref,
     () => ({
@@ -428,28 +474,22 @@ export function BookView(props: BookViewProps) {
       goLeft: () => advance(rtl() ? 1 : -1),
       goRight: () => advance(rtl() ? -1 : 1),
       goTo: async (target) => {
+        await goTo(target)
+      },
+      showMatch: async (cfi, color) => {
+        clearFound()
+        const range = await goTo(cfi)
         const view = viewRef.current
         if (!view) return
-        const resolved =
-          typeof target === 'string' && target.startsWith('epubcfi(')
-            ? view.resolveNavigation(target)
-            : undefined
-        const anchor = resolved?.anchor
-        if (resolved && anchor && view.renderer.goTo) {
-          // Bookmarks saved before pageStart() skipped the space at a page break still land right.
-          await view.renderer.goTo({
-            index: resolved.index,
-            anchor: (doc) => skipLeadingSpace(anchor(doc)),
-          })
-        } else {
-          await view.goTo(target)
-        }
+        found.current = { cfi, range }
+        void view.addAnnotation({ value: cfi, color, kind: 'found' })
       },
       goToFraction: async (fraction) => {
         await viewRef.current?.goToFraction(fraction)
       },
       search: (query, color, onResult) => {
         const view = viewRef.current
+        clearFound()
         let stopped = false
         if (view) {
           void (async () => {
@@ -491,7 +531,7 @@ export function BookView(props: BookViewProps) {
       markSpeaking: (range, color) => {
         const view = viewRef.current
         if (!view) return
-        if (speaking.current) void view.deleteAnnotation({ value: speaking.current })
+        if (speaking.current) unmark(speaking.current)
         speaking.current = null
         if (!range) return
         const index = view.renderer.getContents()[0]?.index
@@ -535,6 +575,8 @@ export function BookView(props: BookViewProps) {
     /** Whether the last press was a finger rather than a mouse or pen. */
     let touch = false
     let settleSelection: ReturnType<typeof setTimeout> | undefined
+    /** The text on the page showing (paginated text). */
+    let pageRange: Range | null = null
     const footnotes = new FootnoteHandler()
 
     const onWheel = (e: WheelEvent) => {
@@ -666,13 +708,22 @@ export function BookView(props: BookViewProps) {
       }
       doc.addEventListener('pointerup', () => setTimeout(reportSelection, 0))
       doc.addEventListener('keyup', (e) => e.shiftKey && reportSelection())
-      doc.addEventListener('selectionchange', () => {
+      // Captured, so it runs before foliate's own listener: when a selection is dragged or
+      // extended past the page, foliate turns the page so it can go on. Selections stay on the
+      // page showing instead (scrolled text scrolls as it's selected, as anywhere else).
+      const onSelectionChange = (e: Event) => {
+        if (!view.isFixedLayout && !callbacks.current.layout.scrolled) {
+          e.stopImmediatePropagation()
+          // Trimming it changes it again, which comes back here.
+          if (trimToPage(doc.getSelection(), pageRange)) return
+        }
         clearTimeout(settleSelection)
         if (doc.getSelection()?.isCollapsed) callbacks.current.onSelection(null)
         // A long press selects a word and the handles adjust it, with no pointerup in the page:
         // report the selection once it settles.
         else if (touch) settleSelection = setTimeout(reportSelection, TOUCH_SELECTION_SETTLE_MS)
-      })
+      }
+      doc.addEventListener('selectionchange', onSelectionChange, true)
       doc.addEventListener('keydown', (e) => {
         callbacks.current.onActivity()
         callbacks.current.onKeyDown(e)
@@ -762,7 +813,7 @@ export function BookView(props: BookViewProps) {
         draw: (f: unknown, o: unknown) => void
         annotation: { color: string; kind?: string }
       }
-      if (annotation.kind === 'speaking') {
+      if (annotation.kind === 'speaking' || annotation.kind === 'found') {
         // A translucent wash rather than a highlighter stroke, whatever the theme.
         draw((rects: DOMRectList) => {
           const g = Overlayer.highlight(rects, { color: annotation.color })
@@ -777,6 +828,8 @@ export function BookView(props: BookViewProps) {
       }
     }) as EventListener)
     view.addEventListener('show-annotation', ((e: CustomEvent<{ value: string; range: Range }>) => {
+      // A passing mark (read-aloud, a search match) isn't a highlight: a click on it is a tap.
+      if (!marks.current.has(e.detail.value)) return
       highlightClicked = true
       setHoveredNote(null)
       const { value, range } = e.detail
@@ -829,9 +882,35 @@ export function BookView(props: BookViewProps) {
     })
     resizes.observe(host)
 
+    // Moving on from a search match takes its mark away. A new layout keeps it on screen: foliate
+    // re-anchors on it, and in case that lands a page off, it's gone to again.
+    let refinding = false
+    const onRendererRelocate = ((e: CustomEvent<{ reason?: string; range?: Range | null }>) => {
+      const { reason, range } = e.detail
+      pageRange = range ?? null
+      const match = found.current
+      if (!match || refinding || reason === 'selection') return
+      if (reason !== 'anchor') {
+        clearFound()
+        return
+      }
+      if (!match.range || !range || callbacks.current.layout.scrolled) return
+      let where: number
+      try {
+        where = range.comparePoint(match.range.startContainer, match.range.startOffset)
+      } catch {
+        return
+      }
+      if (where === 0) return
+      refinding = true
+      void view.renderer.scrollToAnchor?.(match.range)
+      refinding = false
+    }) as EventListener
+
     ;(async () => {
       await view.open(book)
       if (cancelled) return
+      view.renderer.addEventListener('relocate', onRendererRelocate)
       applyLayout(view, initialLayout.current)
       view.renderer.setStyles?.(initialStyles.current)
       await view.init({
@@ -863,6 +942,8 @@ export function BookView(props: BookViewProps) {
       view.remove()
       viewRef.current = null
     }
+    // `clearFound` reads everything through refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [book, callbacks, initialLayout, initialStyles])
 
   useEffect(() => {

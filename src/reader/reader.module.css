@@ -816,13 +816,38 @@
     height: calc(var(--safe-top) + var(--page-margin) - 6px);
   }
 
+  /* The text runs almost to the bottom of the screen, so the footer has the page behind it rather
+     than printing over the last line, with a short fade where it meets the text. */
+  .footer {
+    padding-top: 14px;
+    background: linear-gradient(to bottom, transparent, var(--fog) 14px);
+  }
+
   .footerText {
+    align-items: baseline;
     padding: 0 20px 10px;
     font-size: 12.5px;
   }
 
+  /* One line: "12 min left in chapter · 3 / 17 pages". */
+  .chapterProgress {
+    flex-direction: row;
+    flex-wrap: wrap;
+    column-gap: 6px;
+  }
+
+  .chapterProgress > span:empty {
+    display: none;
+  }
+
   .chapterProgress > span + span {
-    font-size: 12px;
+    font-size: inherit;
+    opacity: 1;
+  }
+
+  .chapterProgress > span:not(:empty) + span::before {
+    content: '·';
+    margin-right: 6px;
   }
 
   /* A taller target for the thumb, which only works while the toolbar shows. */
