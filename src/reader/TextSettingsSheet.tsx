@@ -1,6 +1,8 @@
-import { Check } from 'lucide-react'
+import { Check, ChevronDown } from 'lucide-react'
+import { useState } from 'react'
 import { FieldLabel, Segmented, Switch } from '../components/Fields'
 import { Sheet } from '../components/Sheet'
+import { usePhoneLayout } from '../lib/platform'
 import {
   FONT_SIZES,
   usePreferences,
@@ -56,6 +58,9 @@ export function TextSettingsSheet({
 }) {
   const reader = usePreferences((s) => s.prefs.reader)
   const update = usePreferences((s) => s.update)
+  const phone = usePhoneLayout()
+  // On a phone the sheet opens short, with what's changed most, so the page shows above it.
+  const [more, setMore] = useState(!phone)
   const sizeIndex = Math.max(0, FONT_SIZES.indexOf(reader.fontSize))
   const setSize = (i: number) => {
     const size = FONT_SIZES[Math.min(FONT_SIZES.length - 1, Math.max(0, i))]
@@ -96,25 +101,6 @@ export function TextSettingsSheet({
         </p>
       ) : (
         <>
-          <div className={styles.sheetSection}>
-            <FieldLabel id="font-label">Font</FieldLabel>
-            <div className={styles.fontList} role="radiogroup" aria-labelledby="font-label">
-              {FONTS.map((f) => (
-                <button
-                  key={f.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={reader.font === f.id}
-                  className={styles.fontOption}
-                  onClick={() => update({ reader: { font: f.id } })}
-                >
-                  <span style={{ fontFamily: f.stack }}>{f.name}</span>
-                  {reader.font === f.id && <Check size={16} strokeWidth={2.2} aria-hidden="true" />}
-                </button>
-              ))}
-            </div>
-          </div>
-
           <div className={styles.sheetSection}>
             <div className={styles.labelRow}>
               <FieldLabel id="size-label">Size</FieldLabel>
@@ -165,38 +151,71 @@ export function TextSettingsSheet({
             />
           </div>
 
-          <div className={styles.sheetSection}>
-            <FieldLabel>Margins</FieldLabel>
-            <Segmented
-              label="Margins"
-              value={reader.margins}
-              options={MARGINS}
-              onChange={(margins) => update({ reader: { margins } })}
-            />
-          </div>
+          {more ? (
+            <>
+              <div className={styles.sheetSection}>
+                <FieldLabel id="font-label">Font</FieldLabel>
+                <div className={styles.fontList} role="radiogroup" aria-labelledby="font-label">
+                  {FONTS.map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={reader.font === f.id}
+                      className={styles.fontOption}
+                      onClick={() => update({ reader: { font: f.id } })}
+                    >
+                      <span style={{ fontFamily: f.stack }}>{f.name}</span>
+                      {reader.font === f.id && (
+                        <Check size={16} strokeWidth={2.2} aria-hidden="true" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-          <div className={styles.sheetSection} style={{ gap: 2 }}>
-            <Switch
-              label="Justify and hyphenate"
-              checked={reader.justify}
-              onChange={(justify) => update({ reader: { justify } })}
-            />
-            <Switch
-              label="Scroll instead of turning pages"
-              checked={reader.scrolled}
-              onChange={(scrolled) => update({ reader: { scrolled } })}
-            />
-            <Switch
-              label="Two pages on wide windows"
-              checked={reader.spread}
-              onChange={(spread) => update({ reader: { spread } })}
-            />
-            <Switch
-              label="Slide when turning pages"
-              checked={reader.animatePages}
-              onChange={(animatePages) => update({ reader: { animatePages } })}
-            />
-          </div>
+              <div className={styles.sheetSection}>
+                <FieldLabel>Margins</FieldLabel>
+                <Segmented
+                  label="Margins"
+                  value={reader.margins}
+                  options={MARGINS}
+                  onChange={(margins) => update({ reader: { margins } })}
+                />
+              </div>
+
+              <div className={styles.sheetSection} style={{ gap: 2 }}>
+                <Switch
+                  label="Justify and hyphenate"
+                  checked={reader.justify}
+                  onChange={(justify) => update({ reader: { justify } })}
+                />
+                <Switch
+                  label="Scroll instead of turning pages"
+                  checked={reader.scrolled}
+                  onChange={(scrolled) => update({ reader: { scrolled } })}
+                />
+                {/* A phone is never wide enough. */}
+                {!phone && (
+                  <Switch
+                    label="Two pages on wide windows"
+                    checked={reader.spread}
+                    onChange={(spread) => update({ reader: { spread } })}
+                  />
+                )}
+                <Switch
+                  label="Slide when turning pages"
+                  checked={reader.animatePages}
+                  onChange={(animatePages) => update({ reader: { animatePages } })}
+                />
+              </div>
+            </>
+          ) : (
+            <button type="button" className={styles.moreButton} onClick={() => setMore(true)}>
+              More options
+              <ChevronDown size={16} strokeWidth={1.8} aria-hidden="true" />
+            </button>
+          )}
         </>
       )}
     </Sheet>

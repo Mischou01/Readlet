@@ -1,6 +1,6 @@
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { openUrl } from '@tauri-apps/plugin-opener'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Undo2 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { AuraField } from '../components/AuraField'
@@ -32,7 +32,8 @@ import {
   type ZoomInfo,
 } from './BookView'
 import { ContentsSheet } from './ContentsSheet'
-import { bookmarksOnPage } from './bookmarks'
+import { bookmarksOnPage, inBookOrder } from './bookmarks'
+import { backLabel, jumped, NO_JUMP, relocated, wayBack, type JumpBack } from './jumpBack'
 import {
   BookOpenError,
   fetchBookFile,
@@ -51,7 +52,7 @@ import {
   NotePreview,
   SelectionBar,
 } from './ReaderPopovers'
-import { ReaderFooter } from './ReaderFooter'
+import { ReaderFooter, type ChapterMark } from './ReaderFooter'
 import { ReaderToolbar, type ReaderSheet } from './ReaderToolbar'
 import { readingCss } from './readingStyles'
 import styles from './reader.module.css'
@@ -81,6 +82,8 @@ const PHONE_GAPS = { narrow: '4%', medium: '6%', wide: '9%' } as const
 /** Two-page spreads only when there's room for two comfortable columns. */
 const SPREAD_MIN_WIDTH = 1500
 const NOTE_PREVIEW_DELAY_MS = 250
+/** How far an arrow key scrolls scrolled text. */
+const ARROW_SCROLL_PX = 80
 
 interface ReaderViewProps {
   fingerprint: string
@@ -222,6 +225,8 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
   if (initialLocation === undefined && record)
     setInitialLocation(target ?? record.progress?.cfi ?? null)
   const [fixedLayout, setFixedLayout] = useState(false)
+  /** Where the chapters start, for the progress bar; known once the book is on screen. */
+  const [chapterMarks, setChapterMarks] = useState<ChapterMark[]>([])
 
   // Page-based books zoom; zoomed in, the view can be locked against sliding sideways.
   const [zoom, setZoom] = useState<PageZoom>('fit-page')
@@ -263,18 +268,28 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
   }, [fingerprint, putRecord])
   const saveProgressSoon = useDebouncedCallback(() => void saveProgress(), PROGRESS_SAVE_MS)
 
+  /** The way back after a jump (see markJump), and the page last shown, to tell turns apart. */
+  const [jump, setJump] = useState<JumpBack>(NO_JUMP)
+  const lastPage = useRef<string | undefined>(undefined)
+
   const recordRef = useLatest(record)
   const statusChecked = useRef(false)
   /** When the reader last moved in the book here, to tell news from other devices from old. */
   const movedAt = useRef(0)
   const onRelocate = useCallback(
-    (loc: Location, pages: SectionPages | null) => {
+    (loc: Location, pages: SectionPages | null, reason: string | undefined) => {
       // While a section is still being laid out, foliate can report a position with no fraction;
       // the real one follows. Saving it would store NaN as the progress.
       if (!Number.isFinite(loc.fraction)) return
       movedAt.current = Date.now()
       setLocation(loc)
       setSectionPages(pages)
+      // A tap on a touch screen settles the page where it is, which foliate reports as a turn.
+      const turned =
+        (reason === 'page' || reason === 'snap' || reason === 'scroll') &&
+        loc.cfi !== lastPage.current
+      lastPage.current = loc.cfi
+      setJump((state) => relocated(state, loc.cfi, turned))
       const label = chapterLabel(tocRef.current, loc.tocItem)
       if (loc.cfi) {
         pendingProgress.current = { cfi: loc.cfi, fraction: loc.fraction, label }
@@ -319,14 +334,37 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
     [fingerprint, saveProgressSoon, session, paceRelocated, recordRef],
   )
 
-  // Where the reader's other devices are in this book.
   const locationRef = useLatest(location)
+
+  /** Call before going elsewhere in the book: offers the way back to the page showing now. */
+  const markJump = useCallback(() => {
+    const loc = locationRef.current
+    if (!loc?.cfi) return
+    const from = {
+      cfi: loc.cfi,
+      fraction: loc.fraction,
+      chapter: chapterLabel(tocRef.current, loc.tocItem),
+    }
+    setJump((state) => jumped(state, from))
+  }, [locationRef])
+
+  const back = wayBack(jump)
+  const goBack = () => {
+    if (!back) return
+    setJump(NO_JUMP)
+    void handle.current?.goTo(back.cfi)
+  }
+
+  // Where the reader's other devices are in this book.
   useDevicePositions({
     fingerprint,
     shown: location !== null,
     target,
     current: () => ({ fraction: locationRef.current?.fraction ?? 0, movedAt: movedAt.current }),
-    goTo: (cfi) => void handle.current?.goTo(cfi),
+    goTo: (cfi) => {
+      markJump()
+      void handle.current?.goTo(cfi)
+    },
   })
 
   // Flush progress and the session when leaving the book or closing the window.
@@ -416,8 +454,8 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
 
   // -- Annotations ------------------------------------------------------------------------------
 
-  const highlights = useMemo(() => liveAnnotations(record, 'highlight'), [record])
-  const bookmarks = useMemo(() => liveAnnotations(record, 'bookmark'), [record])
+  const highlights = useMemo(() => inBookOrder(liveAnnotations(record, 'highlight')), [record])
+  const bookmarks = useMemo(() => inBookOrder(liveAnnotations(record, 'bookmark')), [record])
   const highlightMarks = useMemo(
     () =>
       highlights.map((h) => ({
@@ -708,6 +746,12 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
       else requestZoom(stepZoom(zoomInfo.factor, e.key === '-' ? -1 : 1))
       return
     }
+    // Alt+← goes back after a jump, as in a browser.
+    if (e.altKey && !mod && e.key === 'ArrowLeft' && back) {
+      e.preventDefault()
+      goBack()
+      return
+    }
     if (mod || e.altKey) return
     // Shift with an arrow extends a selection, which stays on the page.
     if (e.shiftKey && e.key.startsWith('Arrow')) return
@@ -720,13 +764,15 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
         break
       case 'PageDown':
       case 'ArrowDown':
-        if (!readerPrefs.scrolled || e.key === 'PageDown') h.next()
-        else return
+        // Scrolled, the arrows scroll a few lines, wherever the focus is (the page's own scrolling
+        // only answers them once it's been clicked).
+        if (readerPrefs.scrolled && e.key === 'ArrowDown') h.scrollBy(ARROW_SCROLL_PX)
+        else h.next()
         break
       case 'PageUp':
       case 'ArrowUp':
-        if (!readerPrefs.scrolled || e.key === 'PageUp') h.prev()
-        else return
+        if (readerPrefs.scrolled && e.key === 'ArrowUp') h.scrollBy(-ARROW_SCROLL_PX)
+        else h.prev()
         break
       case ' ':
         if (e.shiftKey) h.prev()
@@ -738,7 +784,9 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
             readAloud.stop()
             setReadingAloud(false)
           } else if (isBackGesture(e)) {
-            navigate({ name: 'library' })
+            // Like a browser's back: first to where the reader jumped from, then to the library.
+            if (back) goBack()
+            else navigate({ name: 'library' })
           } else {
             setChromeVisible((v) => !v)
           }
@@ -773,15 +821,24 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
     else handle.current?.goRight()
   }
 
+  // The matches' outlines go with the search, however it's closed: picking a result on a phone,
+  // a tap on the page, another sheet. (The result gone to keeps its own mark.)
+  const searching = sheet === 'search'
+  useEffect(() => {
+    if (!searching) handle.current?.clearSearch()
+  }, [searching])
+
   const seek = useDebouncedCallback((f: number) => void handle.current?.goToFraction(f), 120)
 
   const goTo = (target: string) => {
+    markJump()
     void handle.current?.goTo(target)
     if (windowWidth < 900) setSheet(null)
   }
 
   /** A search result stays marked after the search closes, until the reader turns the page. */
   const goToMatch = (cfi: string) => {
+    markJump()
     void handle.current?.showMatch(cfi, withAlpha(accent, 0.3))
     if (windowWidth < 900) setSheet(null)
   }
@@ -853,6 +910,13 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
             dark={theme.dark}
             onReady={(info) => {
               setFixedLayout(info.fixedLayout)
+              setChapterMarks(
+                (handle.current?.chapterStarts() ?? []).map((c) => ({
+                  fraction: c.fraction,
+                  label: chapterLabel(tocRef.current, c.item) ?? '',
+                  top: c.depth === 0,
+                })),
+              )
               setReady(true)
               endOpening()
               if (entry?.format === 'pdf') {
@@ -873,6 +937,7 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
               endOpening()
             }}
             onRelocate={onRelocate}
+            onLinkJump={markJump}
             onSelection={(sel) => {
               setSelection(sel)
               if (sel) setActiveHighlight(null)
@@ -914,6 +979,31 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
             transition={{ type: 'spring', stiffness: 260, damping: 18 }}
             onClick={() => void toggleBookmark('page')}
           />
+        )}
+      </AnimatePresence>
+
+      {/* The way back after a jump. It comes and goes with the toolbar. */}
+      <AnimatePresence>
+        {back && ready && !readingAloud && (
+          <motion.button
+            key="back"
+            type="button"
+            className={styles.backPill}
+            title={`${backLabel(back, chapter)} (Alt+←)`}
+            initial={{ opacity: 0, x: '-50%', y: phone ? -8 : 8 }}
+            animate={
+              toolbarHidden
+                ? { opacity: 0, x: '-50%', y: phone ? -8 : 8 }
+                : { opacity: 1, x: '-50%', y: 0 }
+            }
+            exit={{ opacity: 0, x: '-50%', y: phone ? -8 : 8 }}
+            transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+            style={{ pointerEvents: toolbarHidden ? 'none' : undefined }}
+            onClick={goBack}
+          >
+            <Undo2 size={15} strokeWidth={2} aria-hidden="true" />
+            <span>{backLabel(back, chapter)}</span>
+          </motion.button>
         )}
       </AnimatePresence>
 
@@ -973,7 +1063,11 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
           sectionPages={sectionPages}
           pageLabel={location?.pageItem?.label}
           bookmarks={bookmarkFractions}
-          onSeek={seek}
+          chapters={chapterMarks}
+          onSeek={(f) => {
+            markJump()
+            seek(f)
+          }}
         />
       )}
 
@@ -1010,10 +1104,7 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
             key="search"
             search={(q, onResult) => handle.current?.search(q, accent, onResult) ?? (() => {})}
             onGoTo={goToMatch}
-            onClose={() => {
-              handle.current?.clearSearch()
-              setSheet(null)
-            }}
+            onClose={() => setSheet(null)}
           />
         )}
       </AnimatePresence>

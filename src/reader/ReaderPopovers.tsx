@@ -307,11 +307,10 @@ export function DefinitionPopover({
   const [state, setState] = useState<LookupState>(() =>
     allowed ? { status: 'loading' } : { status: 'ask' },
   )
-  const started = useRef(false)
 
+  // Runs once per lookup: the result changes the status, which ends it.
   useEffect(() => {
-    if (state.status !== 'loading' || started.current) return
-    started.current = true
+    if (state.status !== 'loading') return
     const controller = new AbortController()
     lookUp(word, language, controller.signal).then(
       (groups) => setState({ status: 'done', groups }),

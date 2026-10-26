@@ -297,6 +297,53 @@
   height: 5px;
 }
 
+.seek[data-moving] {
+  height: 5px;
+}
+
+/* Where chapters start: a hairline gap in the bar. */
+.seekNotch {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--fog);
+  pointer-events: none;
+}
+
+/* The chapter the bar would take the reader to, while it's dragged or pointed at. */
+.seekPreview {
+  position: absolute;
+  bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 280px;
+  padding: 7px 13px;
+  border-radius: 14px;
+  border: 1px solid var(--glass-edge);
+  background: var(--pop-bg);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  box-shadow: var(--glass-shadow-sm);
+  transform: translateX(-50%);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--haze);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.seekPreviewChapter {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
 /* Bookmarks along the progress bar. */
 .seekMark {
   position: absolute;
@@ -308,6 +355,43 @@
   background: var(--ink);
   opacity: 0.55;
   pointer-events: none;
+}
+
+/* The way back after a jump: in the middle of the footer's line (toasts use the space above). */
+.backPill {
+  position: absolute;
+  z-index: 6;
+  left: 50%;
+  bottom: calc(12px + var(--safe-bottom));
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: min(360px, 44%);
+  height: 34px;
+  padding: 0 15px 0 12px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--glass-edge);
+  background: var(--glass);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  box-shadow: var(--glass-shadow-sm);
+  color: var(--ink);
+  font-size: 13.5px;
+  font-weight: 550;
+}
+
+.backPill span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.backPill svg {
+  flex: none;
+}
+
+.withSheet .backPill {
+  left: calc((100% - 412px) / 2);
 }
 
 /* -- Sheets ----------------------------------------------------------------------------------- */
@@ -384,6 +468,27 @@
 }
 
 .fontOption:hover {
+  background: var(--hover);
+}
+
+/* Opens the rest of the text settings (phones open the sheet short). */
+.moreButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 44px;
+  margin-bottom: 8px;
+  border: none;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--haze);
+  font-size: 14.5px;
+  font-weight: 550;
+}
+
+.moreButton:hover {
   background: var(--hover);
 }
 
@@ -753,14 +858,6 @@
   color: var(--haze);
 }
 
-.backToSpot {
-  position: absolute;
-  z-index: 8;
-  left: 50%;
-  bottom: 56px;
-  transform: translateX(-50%);
-}
-
 @media (max-width: 900px) {
   .withSheet .book,
   .withSheet .footer {
@@ -769,6 +866,10 @@
 
   .withSheet .zoomBar {
     right: 24px;
+  }
+
+  .withSheet .backPill {
+    left: 50%;
   }
 }
 
@@ -850,6 +951,18 @@
     margin-right: 6px;
   }
 
+  /* Under the toolbar: the bottom of the screen has the reading tools and the toasts. */
+  .backPill {
+    top: calc(74px + var(--safe-top));
+    bottom: auto;
+    max-width: calc(100% - 48px);
+  }
+
+  /* Above the thumb, clear of the footer's line. */
+  .seekPreview {
+    bottom: 40px;
+  }
+
   /* A taller target for the thumb, which only works while the toolbar shows. */
   .seek input {
     height: 32px;
@@ -887,9 +1000,5 @@
     max-width: none;
     padding: 14px 16px 6px;
     font-size: 15px;
-  }
-
-  .backToSpot {
-    bottom: calc(64px + var(--safe-bottom));
   }
 }
