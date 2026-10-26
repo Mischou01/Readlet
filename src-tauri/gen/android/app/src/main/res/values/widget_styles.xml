@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- A book's title, in a serif as in the app. -->
+    <style name="ReadletWidgetTitle" parent="">
+        <item name="android:textColor">@color/widget_ink</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:fontFamily">serif</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+
+    <style name="ReadletWidgetText" parent="">
+        <item name="android:textColor">@color/widget_haze</item>
+        <item name="android:textSize">12.5sp</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:maxLines">1</item>
+    </style>
+
+    <!-- Determinate, unlike the theme's spinner; layouts swap in a ring where they want one. -->
+    <style name="ReadletWidgetProgress" parent="@android:style/Widget.ProgressBar.Horizontal">
+        <item name="android:indeterminate">false</item>
+        <item name="android:max">1000</item>
+        <item name="android:minHeight">3dp</item>
+        <item name="android:maxHeight">3dp</item>
+        <item name="android:progressDrawable">@drawable/widget_progress</item>
+    </style>
+</resources>

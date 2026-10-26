@@ -27,6 +27,7 @@ import { useApp } from './state/app'
 import { useLibrary } from './state/library'
 import { useStats } from './state/stats'
 import { followSync } from './state/sync'
+import { useWidgetOpenRequests, useWidgetSync } from './state/widgets'
 import { showError } from './state/toasts'
 import { StatsView } from './stats/StatsView'
 import { useColorScheme, useDocumentTheme, useThemeOverride } from './theme/aura'
@@ -98,6 +99,9 @@ function Shell({ libraryRoot }: { libraryRoot: string }) {
   const details = useApp((s) => s.details)
   const deleting = useApp((s) => s.deleting)
   const dropping = useDropToAdd()
+  // Android's home-screen widgets: kept up to date, and what a tap on one opens.
+  useWidgetSync()
+  useWidgetOpenRequests()
 
   useEffect(() => {
     const library = useLibrary.getState()

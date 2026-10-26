@@ -4,4 +4,12 @@
     <color name="fog">#FFEDE9EC</color>
     <color name="ink">#FF2E2A3B</color>
     <color name="accent">#FFA0566A</color>
+
+    <!-- The widgets, in the reading themes' colours (Paper; Dusk at night, in values-night). The
+         book's own colours are laid over them as they're drawn (Widgets.kt). -->
+    <color name="widget_surface">#FFF8F7F4</color>
+    <color name="widget_ink">#FF2B2833</color>
+    <color name="widget_haze">#FF6F6A78</color>
+    <color name="widget_track">#1A2B2833</color>
+    <color name="widget_accent">#FF8A6959</color>
 </resources>

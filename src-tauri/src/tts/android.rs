@@ -13,8 +13,8 @@ use tauri::{AppHandle, Manager, Runtime};
 use super::segments::segments;
 use super::{PlaybackSession, Voice};
 use crate::android::Native;
-use crate::covers::cover_path;
 use crate::error::{Error, Result};
+use crate::protocol::cover_file;
 use crate::state::AppState;
 
 pub struct Speaker {
@@ -114,10 +114,12 @@ impl Speaker {
         let Some(session) = session else {
             return native.call_unit("endPlaybackSession", ());
         };
-        let cover_path = session.fingerprint.as_deref().and_then(|fp| {
-            let path = cover_path(&app.state::<AppState>().paths.covers, fp);
-            path.is_file().then(|| path.to_string_lossy().into_owned())
-        });
+        // The cover the library shows, including one the reader chose.
+        let cover_path = session
+            .fingerprint
+            .as_deref()
+            .and_then(|fp| cover_file(&app.state::<AppState>(), fp))
+            .map(|path| path.to_string_lossy().into_owned());
         native.call_unit(
             "setPlaybackSession",
             SessionArgs {

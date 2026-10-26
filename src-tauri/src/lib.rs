@@ -147,6 +147,8 @@ pub fn run() {
             platform::system_insets,
             platform::set_reader_controls,
             platform::move_to_background,
+            platform::update_widgets,
+            platform::take_open_request,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Readlet");

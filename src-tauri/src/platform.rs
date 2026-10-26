@@ -1,8 +1,12 @@
 //! Commands for what differs between desktop and Android: file access, picking folders and
-//! books, the system bars, the screen and volume keys while reading, and going to the background. Desktop does these through Tauri's own
-//! plugins (or doesn't need them), so most are Android-only and report `unsupported` elsewhere.
+//! books, the system bars, the screen and volume keys while reading, going to the background, and
+//! the home-screen widgets. Desktop does these through Tauri's own plugins (or doesn't need them),
+//! so most are Android-only and report `unsupported` elsewhere.
+
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 use tauri::AppHandle;
 
 use crate::error::Result;
@@ -37,6 +41,40 @@ pub struct ReaderControls {
     pub keep_screen_on: bool,
     /// The volume keys turn pages instead of changing the volume.
     pub volume_keys: bool,
+}
+
+/// What Android's home-screen widgets show (src/state/widgets.ts builds it; Widgets.kt draws it).
+/// Rust only adds where each book's cover is, and passes the rest along as it is.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WidgetSnapshot {
+    pub current: Option<WidgetBook>,
+    pub shelf: Vec<WidgetBook>,
+    #[serde(flatten)]
+    pub rest: Map<String, Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WidgetBook {
+    pub fingerprint: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cover_path: Option<String>,
+    #[serde(flatten)]
+    pub rest: Map<String, Value>,
+}
+
+impl WidgetSnapshot {
+    /// Fills in each book's cover file, as `cover_of` finds it.
+    // Only Android has widgets; the tests run everywhere.
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+    pub fn with_covers(mut self, cover_of: impl Fn(&str) -> Option<PathBuf>) -> Self {
+        let books = self.current.iter_mut().chain(self.shelf.iter_mut());
+        for book in books {
+            book.cover_path = cover_of(&book.fingerprint).map(|p| p.to_string_lossy().into_owned());
+        }
+        self
+    }
 }
 
 /// Whether the app may read and write the books folder. On Android this is the "All files
@@ -94,11 +132,24 @@ pub async fn move_to_background(app: AppHandle) -> Result<()> {
     imp::move_to_background(app).await
 }
 
+/// Hands Android's home-screen widgets what they show, and redraws them. Desktop has none.
+#[tauri::command]
+pub async fn update_widgets(app: AppHandle, snapshot: WidgetSnapshot) -> Result<()> {
+    imp::update_widgets(app, snapshot).await
+}
+
+/// What a home-screen widget asked the app to show ("book:<fingerprint>" or "stats"), if
+/// anything; asking takes it. The UI asks when it starts and on `app:open-request` events.
+#[tauri::command]
+pub async fn take_open_request(app: AppHandle) -> Result<Option<String>> {
+    imp::take_open_request(app).await
+}
+
 #[cfg(not(target_os = "android"))]
 mod desktop {
     use tauri::AppHandle;
 
-    use super::{Insets, ReaderControls, SystemBars};
+    use super::{Insets, ReaderControls, SystemBars, WidgetSnapshot};
     use crate::error::{Error, Result};
 
     pub async fn storage_access(_: AppHandle) -> Result<bool> {
@@ -132,6 +183,14 @@ mod desktop {
     pub async fn move_to_background(_: AppHandle) -> Result<()> {
         Err(Error::Unsupported("Moving to the background"))
     }
+
+    pub async fn update_widgets(_: AppHandle, _: WidgetSnapshot) -> Result<()> {
+        Ok(())
+    }
+
+    pub async fn take_open_request(_: AppHandle) -> Result<Option<String>> {
+        Ok(None)
+    }
 }
 
 #[cfg(target_os = "android")]
@@ -142,9 +201,10 @@ mod android {
     use serde::{Deserialize, Serialize};
     use tauri::{AppHandle, Manager};
 
-    use super::{Insets, ReaderControls, SystemBars};
+    use super::{Insets, ReaderControls, SystemBars, WidgetSnapshot};
     use crate::android::Native;
     use crate::error::{Error, Result};
+    use crate::protocol::cover_file;
     use crate::state::AppState;
 
     /// Runs `work` on the blocking pool: calls into Kotlin block until it answers.
@@ -183,6 +243,11 @@ mod android {
     #[derive(Deserialize)]
     struct PickedFiles {
         paths: Vec<String>,
+    }
+
+    #[derive(Deserialize)]
+    struct OpenRequest {
+        target: Option<String>,
     }
 
     pub async fn storage_access(app: AppHandle) -> Result<bool> {
@@ -242,5 +307,45 @@ mod android {
         call::<IgnoredAny, _>(app, "moveToBackground", ())
             .await
             .map(|_| ())
+    }
+
+    pub async fn update_widgets(app: AppHandle, snapshot: WidgetSnapshot) -> Result<()> {
+        let snapshot = {
+            let state = app.state::<AppState>();
+            snapshot.with_covers(|fp| cover_file(&state, fp))
+        };
+        call::<IgnoredAny, _>(app, "updateWidgets", snapshot)
+            .await
+            .map(|_| ())
+    }
+
+    pub async fn take_open_request(app: AppHandle) -> Result<Option<String>> {
+        Ok(call::<OpenRequest, _>(app, "takeOpenRequest", ())
+            .await?
+            .target)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn widget_snapshots_gain_covers_and_keep_the_rest() {
+        let snapshot: WidgetSnapshot = serde_json::from_str(
+            r##"{"day":"2026-10-26","goal":{"minutes":5},
+                "current":{"fingerprint":"a","title":"A","palette":{"accent":"#123456"}},
+                "shelf":[{"fingerprint":"a","title":"A"},{"fingerprint":"b","title":"B"}]}"##,
+        )
+        .unwrap();
+        let with = snapshot.with_covers(|fp| (fp == "a").then(|| PathBuf::from("/covers/a.jpg")));
+        let json = serde_json::to_value(&with).unwrap();
+        assert_eq!(json["current"]["coverPath"], "/covers/a.jpg");
+        assert_eq!(json["current"]["palette"]["accent"], "#123456");
+        assert_eq!(json["shelf"][0]["coverPath"], "/covers/a.jpg");
+        assert!(json["shelf"][1].get("coverPath").is_none());
+        assert_eq!(json["shelf"][1]["title"], "B");
+        assert_eq!(json["day"], "2026-10-26");
+        assert_eq!(json["goal"]["minutes"], 5);
     }
 }

@@ -78,8 +78,8 @@ class ReaderControlsArgs {
 /**
  * What only Android can do for Readlet, called from Rust (src-tauri/src/android): read-aloud
  * through the system's text-to-speech, the media notification, "All files access", the system
- * pickers, the system bars, the screen and volume keys while reading, and the keystore that keeps
- * the sync token. Everything it reports
+ * pickers, the system bars, the screen and volume keys while reading, the keystore that keeps the
+ * sync token, and the home-screen widgets' data. Everything it reports
  * goes through one channel to Rust, which forwards it to the UI.
  */
 @TauriPlugin
@@ -88,6 +88,11 @@ class ReadletPlugin(private val activity: Activity) : Plugin(activity) {
   private val speech = Speech(activity.applicationContext) { emit(it) }
   private var insets = JSObject()
   private val secrets by lazy { Secrets(activity.applicationContext) }
+  /**
+   * What a home-screen widget asked the app to show ("book:<fingerprint>" or "stats"), until the
+   * UI takes it (`takeOpenRequest`). The UI asks when it starts, and when told to.
+   */
+  @Volatile private var openRequest: String? = null
 
   override fun load(webView: WebView) {
     // Show the window's background (the app's own background colour) until the page paints,
@@ -122,6 +127,15 @@ class ReadletPlugin(private val activity: Activity) : Plugin(activity) {
         put("direction", direction)
       })
     }
+    // Started by a tap on a widget.
+    openRequest = Widgets.openTarget(activity.intent)
+  }
+
+  /** A tap on a widget brings the running app back, with what to show. */
+  override fun onNewIntent(intent: Intent) {
+    val target = Widgets.openTarget(intent) ?: return
+    openRequest = target
+    emit(JSObject().apply { put("type", "openRequest") })
   }
 
   override fun onDestroy(activity: AppCompatActivity) {
@@ -374,6 +388,31 @@ class ReadletPlugin(private val activity: Activity) : Plugin(activity) {
   fun deleteSecret(invoke: Invoke) {
     secrets.delete(invoke.parseArgs(SecretArgs::class.java).name)
     invoke.resolve()
+  }
+
+  // -- Widgets ----------------------------------------------------------------------------------
+
+  /** Keeps the app's snapshot for the home-screen widgets and redraws them (Widgets.kt). */
+  @Command
+  fun updateWidgets(invoke: Invoke) {
+    val snapshot = invoke.getRawArgs()
+    // Covers are read from disk as they're drawn: off the main thread.
+    thread(name = "readlet-widgets") {
+      try {
+        Widgets.save(activity.applicationContext, snapshot)
+        invoke.resolve()
+      } catch (e: Exception) {
+        invoke.reject("Couldn't update the widgets: ${e.message}")
+      }
+    }
+  }
+
+  /** What a widget asked the app to show, if anything; asking takes it. */
+  @Command
+  fun takeOpenRequest(invoke: Invoke) {
+    val target = openRequest
+    openRequest = null
+    invoke.resolve(JSObject().apply { put("target", target) })
   }
 
   @Command

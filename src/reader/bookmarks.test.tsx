@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { highlight } from '../test/fixtures'
 import type { Annotation } from '../lib/types'
-import { bookmarksOnPage } from './bookmarks'
+import { bookmarksOnPage, inBookOrder } from './bookmarks'
 import { ContentsSheet } from './ContentsSheet'
 import { BookmarkNameDialog } from './ReaderPopovers'
 
@@ -74,6 +74,19 @@ describe('bookmarksOnPage', () => {
   it('ignores positions it can’t read', () => {
     expect(bookmarksOnPage([bookmark()], undefined)).toEqual([])
     expect(bookmarksOnPage([bookmark({ cfi: 'nonsense' })], PAGES[0])).toEqual([])
+  })
+})
+
+describe('inBookOrder', () => {
+  it('lists annotations by where they are in the book, not when they were made', () => {
+    const later = bookmark({ id: 'later', cfi: 'epubcfi(/6/8!/4/2/1:0)', createdAt: 1 })
+    const earlier = bookmark({ id: 'earlier', cfi: 'epubcfi(/6/4!/4/10/1:5)', createdAt: 2 })
+    const first = bookmark({ id: 'first', cfi: 'epubcfi(/6/4!/4/2/1:0)', createdAt: 3 })
+    expect(inBookOrder([later, earlier, first]).map((b) => b.id)).toEqual([
+      'first',
+      'earlier',
+      'later',
+    ])
   })
 })
 

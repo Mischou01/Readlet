@@ -67,6 +67,8 @@ export interface BookViewHandle {
   prev(): void
   goLeft(): void
   goRight(): void
+  /** Scrolled text: scrolls by `dy` pixels (negative is up). */
+  scrollBy(dy: number): void
   /** Goes to a chapter (href or index) or a position (CFI). */
   goTo(target: string | number): Promise<void>
   /**
@@ -79,7 +81,8 @@ export interface BookViewHandle {
   search(query: string, color: string, onResult: (result: SearchResult) => void): () => void
   clearSearch(): void
   deselect(): void
-  sectionFractions(): number[]
+  /** Where the book's chapters start (once it's open), for the progress bar. */
+  chapterStarts(): ChapterStart[]
   /** Where the page on screen starts, for bookmarking it (a CFI). */
   pageStart(): string | null
   /** The table of contents entry a location falls under. */
@@ -88,6 +91,14 @@ export interface BookViewHandle {
   view(): View | null
   /** Marks the sentence being read aloud (or clears the mark) and keeps it on screen. */
   markSpeaking(range: Range | null, color: string): void
+}
+
+/** A chapter's start, as a fraction of the book. */
+export interface ChapterStart {
+  fraction: number
+  item: TocItem
+  /** Top-level entries are the book's parts or chapters; deeper ones, their sections. */
+  depth: number
 }
 
 export type { TapZone } from './tapZones'
@@ -116,7 +127,13 @@ interface BookViewProps {
   dark: boolean
   onReady(info: { fixedLayout: boolean }): void
   onError(error: unknown): void
-  onRelocate(location: Location, pages: SectionPages | null): void
+  /**
+   * A new position is showing. `reason` is foliate's: 'page', 'snap' and 'scroll' when the reader
+   * turned or scrolled there, 'navigation' for a jump, 'anchor' when the page was laid out again.
+   */
+  onRelocate(location: Location, pages: SectionPages | null, reason: string | undefined): void
+  /** A link in the book is about to take the reader elsewhere in it (footnotes stay put). */
+  onLinkJump(): void
   onSelection(selection: SelectionInfo | null): void
   onHighlightClick(cfi: string, rect: DOMRect): void
   /** The pointer moved onto a highlight with a note, or off it (null). */
@@ -170,11 +187,15 @@ function textAreaOf(doc: Document): Element | null {
 
 function applyLayout(view: View, layout: BookLayout) {
   const r = view.renderer
-  r.setAttribute('flow', layout.scrolled ? 'scrolled' : 'paginated')
-  r.setAttribute('margin', `${layout.margin}px`)
-  r.setAttribute('gap', layout.gap)
-  r.setAttribute('max-inline-size', `${layout.maxInlineSize}px`)
-  r.setAttribute('max-column-count', String(layout.maxColumnCount))
+  // Setting some of these lays the whole section out again, even to the value it already has.
+  const set = (name: string, value: string) => {
+    if (r.getAttribute(name) !== value) r.setAttribute(name, value)
+  }
+  set('flow', layout.scrolled ? 'scrolled' : 'paginated')
+  set('margin', `${layout.margin}px`)
+  set('gap', layout.gap)
+  set('max-inline-size', `${layout.maxInlineSize}px`)
+  set('max-column-count', String(layout.maxColumnCount))
   r.toggleAttribute('animated', layout.animated)
 }
 
@@ -473,6 +494,10 @@ export function BookView(props: BookViewProps) {
       prev: () => advance(-1),
       goLeft: () => advance(rtl() ? 1 : -1),
       goRight: () => advance(rtl() ? -1 : 1),
+      scrollBy: (dy) => {
+        const doc = viewRef.current?.renderer.getContents()[0]?.doc
+        if (doc) textAreaOf(doc)?.scrollBy({ top: dy })
+      },
       goTo: async (target) => {
         await goTo(target)
       },
@@ -514,7 +539,28 @@ export function BookView(props: BookViewProps) {
       },
       clearSearch: () => viewRef.current?.clearSearch(),
       deselect: () => viewRef.current?.deselect(),
-      sectionFractions: () => viewRef.current?.getSectionFractions() ?? [],
+      chapterStarts: () => {
+        const view = viewRef.current
+        if (!view) return []
+        const fractions = view.getSectionFractions()
+        const starts: ChapterStart[] = []
+        // Entries that share a section (anchors within one file) can't be placed more precisely
+        // than the section's start; the first of them names it.
+        const placed = new Set<number>()
+        const walk = (items: readonly TocItem[], depth: number) => {
+          for (const item of items) {
+            const index = item.href ? view.resolveNavigation(item.href)?.index : undefined
+            const fraction = index === undefined ? undefined : fractions[index]
+            if (index !== undefined && fraction !== undefined && !placed.has(index)) {
+              placed.add(index)
+              starts.push({ fraction, item, depth })
+            }
+            if (item.subitems?.length) walk(item.subitems, depth + 1)
+          }
+        }
+        walk(view.book.toc ?? [], 0)
+        return starts.sort((a, b) => a.fraction - b.fraction)
+      },
       pageStart: () => {
         const view = viewRef.current
         const location = view?.lastLocation
@@ -803,7 +849,7 @@ export function BookView(props: BookViewProps) {
         r.scrollLeft = left
         callbacks.current.onZoomInfo(zoomInfo(view))
       }
-      callbacks.current.onRelocate(e.detail, sectionPages(view))
+      callbacks.current.onRelocate(e.detail, sectionPages(view), lastReason)
     }) as EventListener)
     view.addEventListener('create-overlay', () => {
       for (const mark of marks.current.values()) void view.addAnnotation(markAnnotation(mark))
@@ -847,6 +893,8 @@ export function BookView(props: BookViewProps) {
       const { a } = e.detail
       lastLinkRect = toWindowRect(a.getBoundingClientRect(), a.ownerDocument)
       footnotes.handle(view.book, e)?.catch((err) => console.warn('footnote failed', err))
+      // A footnote shows in a popover; any other link goes there.
+      if (!e.defaultPrevented) callbacks.current.onLinkJump()
     }) as EventListener)
 
     footnotes.addEventListener('before-render', ((e: CustomEvent<{ view: View }>) => {
@@ -882,35 +930,40 @@ export function BookView(props: BookViewProps) {
     })
     resizes.observe(host)
 
-    // Moving on from a search match takes its mark away. A new layout keeps it on screen: foliate
+    // A search match keeps its mark while it's on screen; moving off it (a page turn, a jump)
+    // takes the mark away. A new layout (a sheet closing, a resize) keeps it on screen: foliate
     // re-anchors on it, and in case that lands a page off, it's gone to again.
     let refinding = false
+    let lastReason: string | undefined
     const onRendererRelocate = ((e: CustomEvent<{ reason?: string; range?: Range | null }>) => {
       const { reason, range } = e.detail
+      lastReason = reason
       pageRange = range ?? null
       const match = found.current
       if (!match || refinding || reason === 'selection') return
-      if (reason !== 'anchor') {
-        clearFound()
-        return
-      }
-      if (!match.range || !range || callbacks.current.layout.scrolled) return
-      let where: number
+      let onPage = false
       try {
-        where = range.comparePoint(match.range.startContainer, match.range.startOffset)
+        const start = match.range
+        onPage =
+          !!start && !!range && range.comparePoint(start.startContainer, start.startOffset) === 0
       } catch {
-        return
+        // The match is in a section that's no longer showing.
       }
-      if (where === 0) return
-      refinding = true
-      void view.renderer.scrollToAnchor?.(match.range)
-      refinding = false
+      if (onPage) return
+      if (reason !== 'anchor') clearFound()
+      // Scrolled text puts the match at the very top, just outside what foliate counts as showing.
+      else if (match.range && !callbacks.current.layout.scrolled) {
+        refinding = true
+        void view.renderer.scrollToAnchor?.(match.range)
+        refinding = false
+      }
     }) as EventListener
 
     ;(async () => {
       await view.open(book)
       if (cancelled) return
-      view.renderer.addEventListener('relocate', onRendererRelocate)
+      // Captured, to run before the view's own listener, which reports the move without its reason.
+      view.renderer.addEventListener('relocate', onRendererRelocate, true)
       applyLayout(view, initialLayout.current)
       view.renderer.setStyles?.(initialStyles.current)
       await view.init({
