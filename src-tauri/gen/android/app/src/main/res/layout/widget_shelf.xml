@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Reading now: the covers of the books being read, each over its progress. ShelfWidget shows as
+     many slots as fit the width. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_surface"
+    android:clipToOutline="true">
+
+    <!-- The book's colours, fading in from either side (Widgets.paintAura). -->
+    <ImageView
+        android:id="@+id/glowStart"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:importantForAccessibility="no"
+        android:scaleType="fitXY"
+        android:src="@drawable/widget_glow_start" />
+
+    <ImageView
+        android:id="@+id/glowEnd"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:importantForAccessibility="no"
+        android:scaleType="fitXY"
+        android:src="@drawable/widget_glow_end" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:padding="12dp">
+
+        <LinearLayout
+            android:id="@+id/slot0"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:layout_marginEnd="10dp"
+            android:gravity="center_horizontal"
+            android:orientation="vertical">
+
+            <ImageView
+                android:id="@+id/cover0"
+                android:layout_width="wrap_content"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:adjustViewBounds="true"
+                android:background="@drawable/widget_cover_shape"
+                android:clipToOutline="true"
+                android:scaleType="fitCenter"
+                android:src="@drawable/widget_cover_blank" />
+
+            <ProgressBar
+                android:id="@+id/progress0"
+                style="@style/ReadletWidgetProgress"
+                android:layout_width="match_parent"
+                android:layout_height="3dp"
+                android:layout_marginTop="7dp"
+                android:progress="340" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/slot1"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:layout_marginEnd="10dp"
+            android:gravity="center_horizontal"
+            android:orientation="vertical">
+
+            <ImageView
+                android:id="@+id/cover1"
+                android:layout_width="wrap_content"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:adjustViewBounds="true"
+                android:background="@drawable/widget_cover_shape"
+                android:clipToOutline="true"
+                android:scaleType="fitCenter"
+                android:src="@drawable/widget_cover_blank" />
+
+            <ProgressBar
+                android:id="@+id/progress1"
+                style="@style/ReadletWidgetProgress"
+                android:layout_width="match_parent"
+                android:layout_height="3dp"
+                android:layout_marginTop="7dp"
+                android:progress="720" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/slot2"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:layout_marginEnd="10dp"
+            android:gravity="center_horizontal"
+            android:orientation="vertical">
+
+            <ImageView
+                android:id="@+id/cover2"
+                android:layout_width="wrap_content"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:adjustViewBounds="true"
+                android:background="@drawable/widget_cover_shape"
+                android:clipToOutline="true"
+                android:scaleType="fitCenter"
+                android:src="@drawable/widget_cover_blank" />
+
+            <ProgressBar
+                android:id="@+id/progress2"
+                style="@style/ReadletWidgetProgress"
+                android:layout_width="match_parent"
+                android:layout_height="3dp"
+                android:layout_marginTop="7dp"
+                android:progress="150" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/slot3"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:layout_marginEnd="10dp"
+            android:gravity="center_horizontal"
+            android:orientation="vertical">
+
+            <ImageView
+                android:id="@+id/cover3"
+                android:layout_width="wrap_content"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:adjustViewBounds="true"
+                android:background="@drawable/widget_cover_shape"
+                android:clipToOutline="true"
+                android:scaleType="fitCenter"
+                android:src="@drawable/widget_cover_blank" />
+
+            <ProgressBar
+                android:id="@+id/progress3"
+                style="@style/ReadletWidgetProgress"
+                android:layout_width="match_parent"
+                android:layout_height="3dp"
+                android:layout_marginTop="7dp"
+                android:progress="500" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/slot4"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:layout_marginEnd="10dp"
+            android:gravity="center_horizontal"
+            android:orientation="vertical">
+
+            <ImageView
+                android:id="@+id/cover4"
+                android:layout_width="wrap_content"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:adjustViewBounds="true"
+                android:background="@drawable/widget_cover_shape"
+                android:clipToOutline="true"
+                android:scaleType="fitCenter"
+                android:src="@drawable/widget_cover_blank" />
+
+            <ProgressBar
+                android:id="@+id/progress4"
+                style="@style/ReadletWidgetProgress"
+                android:layout_width="match_parent"
+                android:layout_height="3dp"
+                android:layout_marginTop="7dp"
+                android:progress="80" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/slot5"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:gravity="center_horizontal"
+            android:orientation="vertical">
+
+            <ImageView
+                android:id="@+id/cover5"
+                android:layout_width="wrap_content"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:adjustViewBounds="true"
+                android:background="@drawable/widget_cover_shape"
+                android:clipToOutline="true"
+                android:scaleType="fitCenter"
+                android:src="@drawable/widget_cover_blank" />
+
+            <ProgressBar
+                android:id="@+id/progress5"
+                style="@style/ReadletWidgetProgress"
+                android:layout_width="match_parent"
+                android:layout_height="3dp"
+                android:layout_marginTop="7dp"
+                android:progress="900" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

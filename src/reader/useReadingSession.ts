@@ -87,8 +87,11 @@ export function useReadingSession(
 
   const checkpoint = useCallback(() => {
     const current = tracker.current?.current
-    if (current && current.activeMs >= MIN_SESSION_MS)
-      api.checkpointSession(current).catch((e) => console.warn('checkpoint failed', e))
+    if (!current || current.activeMs < MIN_SESSION_MS) return
+    // Today's reading so far counts already (the widgets show it): the session replaces it when
+    // it ends.
+    useStats.getState().putSession({ ...current })
+    api.checkpointSession(current).catch((e) => console.warn('checkpoint failed', e))
   }, [])
 
   return { activity, relocated, finish, checkpoint }

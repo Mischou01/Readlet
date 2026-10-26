@@ -7,4 +7,21 @@
     <string name="play">Play</string>
     <string name="pause">Pause</string>
     <string name="stop">Stop reading aloud</string>
+
+    <string name="widget_continue_name">Continue reading</string>
+    <string name="widget_continue_description">The book you\'re reading, with your progress and the time left in the chapter</string>
+    <string name="widget_continue_empty">Open a book in Readlet and it shows up here</string>
+    <string name="widget_goal_name">Reading goal</string>
+    <string name="widget_goal_description">Today\'s reading against your daily goal, and your streak</string>
+    <string name="widget_goal_empty">Open Readlet to start</string>
+    <string name="widget_goal_progress">of %d min today</string>
+    <string name="widget_goal_done">Today\'s goal is done</string>
+    <string name="widget_streak_none">No streak yet</string>
+    <plurals name="widget_streak">
+        <item quantity="one">%d day</item>
+        <item quantity="other">%d days</item>
+    </plurals>
+    <string name="widget_shelf_name">Reading now</string>
+    <string name="widget_shelf_description">Covers of the books you\'re reading, to open one</string>
+    <string name="widget_shelf_empty">Books you\'re reading show up here</string>
 </resources>

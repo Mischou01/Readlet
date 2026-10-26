@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Continue reading, narrow: the cover over a ring of progress. Without a cover, the title. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_surface"
+    android:clipToOutline="true">
+
+    <!-- The book's colours, fading in from either side (Widgets.paintAura). -->
+    <ImageView
+        android:id="@+id/glowStart"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:importantForAccessibility="no"
+        android:scaleType="fitXY"
+        android:src="@drawable/widget_glow_start" />
+
+    <ImageView
+        android:id="@+id/glowEnd"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:importantForAccessibility="no"
+        android:scaleType="fitXY"
+        android:src="@drawable/widget_glow_end" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:padding="12dp">
+
+        <ImageView
+            android:id="@+id/cover"
+            android:layout_width="wrap_content"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:adjustViewBounds="true"
+            android:background="@drawable/widget_cover_shape"
+            android:clipToOutline="true"
+            android:scaleType="fitCenter"
+            android:src="@drawable/widget_cover_blank" />
+
+        <TextView
+            android:id="@+id/title"
+            style="@style/ReadletWidgetTitle"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:maxLines="4"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <ProgressBar
+                android:id="@+id/progress"
+                style="@style/ReadletWidgetProgress"
+                android:layout_width="16dp"
+                android:layout_height="16dp"
+                android:minHeight="16dp"
+                android:maxHeight="16dp"
+                android:progress="340"
+                android:progressDrawable="@drawable/widget_ring_small" />
+
+            <TextView
+                android:id="@+id/status"
+                style="@style/ReadletWidgetText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:text="34%" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

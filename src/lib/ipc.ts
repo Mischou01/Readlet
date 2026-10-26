@@ -23,6 +23,7 @@ import type {
   SyncStatus,
   YearlyGoal,
 } from './types'
+import type { WidgetSnapshot } from '../state/widgets'
 
 export interface AnnotationInput {
   id: string
@@ -141,6 +142,10 @@ export const api = {
   setReaderControls: (controls: { keepScreenOn: boolean; volumeKeys: boolean }) =>
     invoke<void>('set_reader_controls', { controls }),
   moveToBackground: () => invoke<void>('move_to_background'),
+  /** Android's home-screen widgets: what they show (src/state/widgets.ts). */
+  updateWidgets: (snapshot: WidgetSnapshot) => invoke<void>('update_widgets', { snapshot }),
+  /** What a tap on a widget asked to open ("book:<fingerprint>" or "stats"); asking takes it. */
+  takeOpenRequest: () => invoke<string | null>('take_open_request'),
 
   syncStatus: () => invoke<SyncStatus>('sync_status'),
   connectKDrive: (token: string, drive: string) =>
@@ -204,6 +209,9 @@ export const events = {
   /** A volume key turned the page (Android, when that setting is on). */
   onPageKey: (handler: (direction: 'next' | 'previous') => void): Promise<UnlistenFn> =>
     listen<'next' | 'previous'>('reader:page-key', (e) => handler(e.payload)),
+  /** A tap on a home-screen widget brought the app back; `takeOpenRequest` says to what. */
+  onOpenRequest: (handler: () => void): Promise<UnlistenFn> =>
+    listen('app:open-request', () => handler()),
   /** The app went to the background (mobile). */
   onSuspended: (handler: () => void): Promise<UnlistenFn> =>
     listen('app:suspended', () => handler()),

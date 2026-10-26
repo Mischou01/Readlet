@@ -1,4 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="fog">#FF1D1A24</color>
+
+    <color name="widget_surface">#FF2A2735</color>
+    <color name="widget_ink">#FFE3DDEA</color>
+    <color name="widget_haze">#FFA49EB0</color>
+    <color name="widget_track">#24E3DDEA</color>
+    <color name="widget_accent">#FFCFB0A1</color>
 </resources>

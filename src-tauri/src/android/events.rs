@@ -16,6 +16,9 @@ pub const REMOTE_EVENT: &str = "tts:remote";
 pub const INSETS_EVENT: &str = "system:insets";
 /// A volume key turned the page (when that setting is on); payload: `PageDirection`.
 pub const PAGE_KEY_EVENT: &str = "reader:page-key";
+/// A home-screen widget asked the running app to show something; the UI asks what with
+/// `take_open_request`. No payload.
+pub const OPEN_REQUEST_EVENT: &str = "app:open-request";
 
 /// A read-aloud control used outside the app.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -54,6 +57,7 @@ pub enum NativeEvent {
     PageKey {
         direction: PageDirection,
     },
+    OpenRequest,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
@@ -97,6 +101,7 @@ pub fn forward<R: Runtime>(app: &AppHandle<R>, event: NativeEvent) {
         NativeEvent::Remote { action } => app.emit(REMOTE_EVENT, action),
         NativeEvent::Insets(insets) => app.emit(INSETS_EVENT, insets),
         NativeEvent::PageKey { direction } => app.emit(PAGE_KEY_EVENT, direction),
+        NativeEvent::OpenRequest => app.emit(OPEN_REQUEST_EVENT, ()),
     };
     if let Err(e) = result {
         log::warn!("couldn't forward an event to the UI: {e}");
@@ -140,5 +145,7 @@ mod tests {
                 direction: PageDirection::Previous
             }
         );
+        let open: NativeEvent = serde_json::from_str(r#"{"type":"openRequest"}"#).unwrap();
+        assert_eq!(open, NativeEvent::OpenRequest);
     }
 }

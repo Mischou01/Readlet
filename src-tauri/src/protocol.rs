@@ -77,11 +77,7 @@ fn serve_cover<R: Runtime>(app: &AppHandle<R>, request: &Request<Vec<u8>>) -> Re
     let Some(fp) = requested_fingerprint(request) else {
         return status(StatusCode::BAD_REQUEST);
     };
-    let state = app.state::<AppState>();
-    let Some(path) = chosen_cover(&state, fp)
-        .or_else(|| Some(cover_path(&state.paths.covers, fp)).filter(|p| p.is_file()))
-        .or_else(|| shared_cover(&state, fp))
-    else {
+    let Some(path) = cover_file(&app.state::<AppState>(), fp) else {
         return status(StatusCode::NOT_FOUND);
     };
     match std::fs::read(path) {
@@ -95,6 +91,15 @@ fn serve_cover<R: Runtime>(app: &AppHandle<R>, request: &Request<Vec<u8>>) -> Re
             .unwrap_or_else(|_| status(StatusCode::INTERNAL_SERVER_ERROR)),
         Err(_) => status(StatusCode::NOT_FOUND),
     }
+}
+
+/// A book's cover thumbnail: the one the reader chose, the one extracted from the book, or for a
+/// book only another device has, the one it shares. Also for Android's read-aloud notification
+/// and home-screen widgets.
+pub fn cover_file(state: &AppState, fp: &str) -> Option<PathBuf> {
+    chosen_cover(state, fp)
+        .or_else(|| Some(cover_path(&state.paths.covers, fp)).filter(|p| p.is_file()))
+        .or_else(|| shared_cover(state, fp))
 }
 
 /// The small cover another device shares for a book that's only on that device (`cards`).

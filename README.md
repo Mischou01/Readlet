@@ -18,7 +18,8 @@ E-reader for Linux and Android. Built with Tauri 2, React and
   and the books you read elsewhere shown even where their file isn't
 - Read-aloud via Speech Dispatcher (Linux) or the system TTS engine (Android), with a sleep timer
 - PDF and comic zoom with a view lock
-- Android: keep-awake while reading, volume keys for page turns, lock-screen playback controls
+- Android: keep-awake while reading, volume keys for page turns, lock-screen playback controls,
+  home-screen widgets (continue reading, the reading goal and streak, the books being read)
 
 |                                                 |                                                 |
 | ----------------------------------------------- | ----------------------------------------------- |
