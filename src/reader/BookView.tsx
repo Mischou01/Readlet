@@ -8,6 +8,7 @@ import {
   collapseCFI,
   FootnoteHandler,
   Overlayer,
+  PAGE_DRAWN,
   type Book,
   type Location,
   type SearchResult,
@@ -323,11 +324,6 @@ function applyZoom(view: View, zoom: PageZoom, focus?: { x: number; y: number })
     value = String(Math.round(fit * zoom * 10_000) / 10_000)
   } else value = zoom
   if ((r.getAttribute('zoom') ?? 'fit-page') === value) return false
-  // pdf.js adds a new text layer each time it draws a page, without removing the old one.
-  for (const { doc } of r.getContents()) {
-    doc?.querySelector('.textLayer')?.replaceChildren()
-    doc?.querySelector('.annotationLayer')?.replaceChildren()
-  }
   const before = currentScale(view)
   const page = visiblePages(view).find((p) => p.size)?.frame
   const box = r.getBoundingClientRect()
@@ -369,6 +365,28 @@ function skipLeadingSpace<T extends Range | Element>(anchor: T): T {
   const moved = anchor.cloneRange()
   moved.setStart(node, offset)
   return moved as T
+}
+
+/**
+ * foliate's fixed-layout renderer gives its pages no overlayer to draw highlights on (its
+ * getContents() leaves them as a TODO), so highlights in PDFs were saved but never shown. Each page
+ * gets one here, made by the view's own `create-overlayer` handler as the text renderer does.
+ */
+function overlayFixedPages(view: View): (doc: Document, index: number) => void {
+  const r = view.renderer
+  const pages = new WeakMap<Document, { index: number; overlayer: { element: SVGElement } }>()
+  const getContents = r.getContents.bind(r)
+  r.getContents = () => getContents().map((c) => ({ ...c, ...(c.doc && pages.get(c.doc)) }))
+  return (doc, index) => {
+    const attach = (overlayer: { element: SVGElement }) => {
+      // The page is paper whatever the theme, and the view's variables don't reach into its frame.
+      overlayer.element.style.setProperty('--overlayer-highlight-opacity', '1')
+      overlayer.element.style.setProperty('--overlayer-highlight-blend-mode', 'multiply')
+      doc.body.append(overlayer.element)
+      pages.set(doc, { index, overlayer })
+    }
+    r.dispatchEvent(new CustomEvent('create-overlayer', { detail: { doc, index, attach } }))
+  }
 }
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
@@ -608,6 +626,7 @@ export function BookView(props: BookViewProps) {
     let highlightClicked = false
     let textArea: Element | null = null
     let lastLinkRect = new DOMRect()
+    let overlayPage: ((doc: Document, index: number) => void) | null = null
     let hoveredNote: string | null = null
     const setHoveredNote = (hover: NoteHover | null) => {
       if ((hover?.cfi ?? null) === hoveredNote) return
@@ -700,8 +719,22 @@ export function BookView(props: BookViewProps) {
       callbacks.current.onZoomRequest(normalizeZoom(factor * ratio))
     }
 
+    const drawMarks = () => {
+      for (const mark of marks.current.values()) void view.addAnnotation(markAnnotation(mark))
+    }
     const attachToPage = (doc: Document, index: number) => {
       textArea = textAreaOf(doc) ?? textArea
+      if (overlayPage) {
+        // A PDF page's text comes later, and again at each new size: its marks follow it.
+        if (doc.querySelector('.textLayer')) {
+          let overlaid = false
+          doc.addEventListener(PAGE_DRAWN, () => {
+            if (overlaid) drawMarks()
+            else overlayPage?.(doc, index)
+            overlaid = true
+          })
+        } else overlayPage(doc, index)
+      }
       doc.addEventListener('wheel', (e) => onWheelZoom(e, doc), { passive: false })
       doc.addEventListener(
         'touchstart',
@@ -851,9 +884,7 @@ export function BookView(props: BookViewProps) {
       }
       callbacks.current.onRelocate(e.detail, sectionPages(view), lastReason)
     }) as EventListener)
-    view.addEventListener('create-overlay', () => {
-      for (const mark of marks.current.values()) void view.addAnnotation(markAnnotation(mark))
-    })
+    view.addEventListener('create-overlay', drawMarks)
     view.addEventListener('draw-annotation', ((e: CustomEvent) => {
       const { draw, annotation } = e.detail as {
         draw: (f: unknown, o: unknown) => void
@@ -962,6 +993,7 @@ export function BookView(props: BookViewProps) {
     ;(async () => {
       await view.open(book)
       if (cancelled) return
+      if (view.isFixedLayout) overlayPage = overlayFixedPages(view)
       // Captured, to run before the view's own listener, which reports the move without its reason.
       view.renderer.addEventListener('relocate', onRendererRelocate, true)
       applyLayout(view, initialLayout.current)

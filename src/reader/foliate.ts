@@ -7,6 +7,7 @@ import {
   type Book,
   type Contributor,
   type LanguageMap,
+  type Section,
   type View,
 } from 'foliate-js/view.js'
 import { Overlayer } from 'foliate-js/overlayer.js'
@@ -92,10 +93,53 @@ async function isPdf(file: Blob): Promise<boolean> {
   return String.fromCharCode(...head) === '%PDF-'
 }
 
+/** Fired on a PDF page's document each time pdf.js has drawn it, text layer and all. */
+export const PAGE_DRAWN = 'readlet-page-drawn'
+
+type PageDraw = { doc: Document; scale: number }
+type PdfPage = { src: string; onZoom(o: PageDraw): Promise<void> }
+
+/**
+ * pdf.js draws a PDF page again at each zoom or resize, adding a text layer without removing the
+ * old one, and nothing says when it's done. Overlapping draws could also finish out of order. Each
+ * page draws once at a time, on cleared layers, at the latest scale, and says when it's done, so
+ * highlights can be drawn over the new text.
+ */
+function drawPdfPagesInTurn(book: Book) {
+  const drawing = new WeakMap<Document, { next: PageDraw | null }>()
+  for (const section of book.sections) {
+    const load = section.load.bind(section)
+    section.load = (async () => {
+      const page = (await load()) as unknown as PdfPage
+      const onZoom: PdfPage['onZoom'] = async (o) => {
+        const busy = drawing.get(o.doc)
+        if (busy) {
+          busy.next = o
+          return
+        }
+        const state: { next: PageDraw | null } = { next: o }
+        drawing.set(o.doc, state)
+        for (let next = state.next; next; next = state.next) {
+          state.next = null
+          for (const layer of next.doc.querySelectorAll('.textLayer, .annotationLayer')) {
+            layer.replaceChildren()
+          }
+          await page.onZoom(next).catch((e) => console.warn('drawing a PDF page failed', e))
+          next.doc.dispatchEvent(new Event(PAGE_DRAWN))
+        }
+        drawing.delete(o.doc)
+      }
+      return { ...page, onZoom }
+    }) as unknown as Section['load']
+  }
+}
+
 export async function loadBook(file: File): Promise<Book> {
   try {
-    if (await isPdf(file)) await preparePdfjs()
+    const pdf = await isPdf(file)
+    if (pdf) await preparePdfjs()
     const book = await makeBook(file)
+    if (pdf) drawPdfPagesInTurn(book)
     harden(book)
     return book
   } catch (e) {
