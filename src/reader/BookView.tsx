@@ -642,6 +642,9 @@ export function BookView(props: BookViewProps) {
     let settleSelection: ReturnType<typeof setTimeout> | undefined
     /** The text on the page showing (paginated text). */
     let pageRange: Range | null = null
+    /** Where the page showing starts (`renderer.start`), to bring it back if a selection moves it. */
+    let pageStart: number | undefined
+    const paginatedText = () => !view.isFixedLayout && !callbacks.current.layout.scrolled
     const footnotes = new FootnoteHandler()
 
     const onWheel = (e: WheelEvent) => {
@@ -791,8 +794,15 @@ export function BookView(props: BookViewProps) {
       // extended past the page, foliate turns the page so it can go on. Selections stay on the
       // page showing instead (scrolled text scrolls as it's selected, as anywhere else).
       const onSelectionChange = (e: Event) => {
-        if (!view.isFixedLayout && !callbacks.current.layout.scrolled) {
+        if (paginatedText()) {
           e.stopImmediatePropagation()
+          // Android scrolls a dragged selection handle into view, sliding the next page in.
+          const r = view.renderer
+          const moved =
+            pageStart !== undefined && r.start !== undefined && Math.abs(r.start - pageStart) > 1
+          if (moved && pageRange && !doc.getSelection()?.isCollapsed) {
+            void r.scrollToAnchor?.(pageRange)
+          }
           // Trimming it changes it again, which comes back here.
           if (trimToPage(doc.getSelection(), pageRange)) return
         }
@@ -803,6 +813,15 @@ export function BookView(props: BookViewProps) {
         else if (touch) settleSelection = setTimeout(reportSelection, TOUCH_SELECTION_SETTLE_MS)
       }
       doc.addEventListener('selectionchange', onSelectionChange, true)
+      // foliate slides the page under a moving finger, including one still extending a long-press
+      // selection. With a selection showing, the page holds still (and snaps back on release).
+      doc.addEventListener(
+        'touchmove',
+        (e) => {
+          if (paginatedText() && !doc.getSelection()?.isCollapsed) e.stopPropagation()
+        },
+        { capture: true, passive: true },
+      )
       doc.addEventListener('keydown', (e) => {
         callbacks.current.onActivity()
         callbacks.current.onKeyDown(e)
@@ -970,6 +989,7 @@ export function BookView(props: BookViewProps) {
       const { reason, range } = e.detail
       lastReason = reason
       pageRange = range ?? null
+      pageStart = view.renderer.start
       const match = found.current
       if (!match || refinding || reason === 'selection') return
       let onPage = false

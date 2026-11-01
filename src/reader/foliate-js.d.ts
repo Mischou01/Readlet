@@ -93,6 +93,8 @@ declare module 'foliate-js/view.js' {
     prev(): Promise<void>
     readonly heads?: HTMLElement[]
     readonly feet?: HTMLElement[]
+    /** How far the view is scrolled into the section, in pixels. */
+    readonly start?: number
     /** Paginated text only: the screen showing, counting a blank one before the section. */
     readonly page?: number
     /** Paginated text only: screens in the section, plus a blank one at each end. */

@@ -5,3 +5,8 @@ src-tauri/gen/schemas/
 *.log
 .DS_Store
 .env*
+
+# Signing keys (docs/SIGNING.md); never commit them
+*.keystore
+*.jks
+keystore.properties

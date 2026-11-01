@@ -41,8 +41,10 @@ Library when you search for a book's details, and kDrive once you connect it for
 
 ## Install
 
-Packages (`.deb`, `.rpm`, AppImage, Android APK) are published as the `main-build` pre-release on
-the Releases page.
+Download the `.deb`, `.rpm`, AppImage or Android APK from the
+[latest release](https://github.com/Mischou01/Readlet/releases/latest). The `main-build`
+pre-release has the newest build from `main`; it's signed with the same key, so either APK
+installs over the other.
 
 **Linux:** read-aloud needs Speech Dispatcher and a voice (`sudo dnf install speech-dispatcher
 espeak-ng` on Fedora). The AppImage does not install them.

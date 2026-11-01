@@ -20,7 +20,8 @@ This is the living plan. Update **Status** and the **Decisions log** whenever ei
 | M5 Stats & goals | **done** |
 | M6 Read-aloud | **speech-dispatcher done**; Piper voices and the download manager not started |
 | M7 Polish & ship | **mostly done**: open-book transition, reduce transparency, onboarding and empty states, PDF (experimental), app icon, RPM, DEB and AppImage (CI). Windows builds not started |
-| M8 Android | **built, not yet tried on a phone**: phone layout, touch, back gesture, All files access, read-aloud with lock-screen controls, catch-up on resume, keeping the screen on, volume-key page turns, signed APK in CI (§12) |
+| M8 Android | **done, in use on a phone**: phone layout, touch, back gesture, All files access, read-aloud with lock-screen controls, catch-up on resume, keeping the screen on, volume-key page turns, signed APK in CI, home-screen widgets (§12) |
+| Sync (2026-10-25) | **kDrive done**: reading data through a kDrive folder with a personal API token in the system keyring; Google Drive next |
 | Library and reading extras (2026-10-24) | **done**: book details, deleting books, series grouping, zoom and view lock for PDFs and comics (§6, D23–D26). Checked in Chromium at desktop and phone sizes with a mocked core; not yet on a phone or in WebKitGTK |
 
 Checked in the running app (headless X11 on Linux, WebKitGTK 2.52):
@@ -35,10 +36,10 @@ Checked in the running app (headless X11 on Linux, WebKitGTK 2.52):
 - Book security, with an adversarial EPUB: scripts, inline handlers, forms, frames and remote
   images are all blocked
 
-Automated: 96 Rust tests (fingerprints, scanning and watching, deleting, the index, the store and
-its merge rules, `book://`, the SSIP client, the Android events, the aura, covers, settings and
-command validation) and 92 Vitest tests (library model and series, highlights and Markdown export,
-stats, resurfacing, TOC labels, CSP, zoom, formatting).
+Automated: 132 Rust tests (fingerprints, scanning and watching, deleting, the index, the store and
+its merge rules, sync, `book://`, the SSIP client, the Android events, the aura, covers, settings
+and command validation) and 137 Vitest tests (library model and series, highlights and Markdown
+export, stats, resurfacing, TOC labels, CSP, zoom, selections, jumps, widgets, formatting).
 CI runs both on every push.
 
 Not yet measured against the milestone criteria:
@@ -50,14 +51,12 @@ Not yet measured against the milestone criteria:
 
 ## Next session (start here)
 
-1. Install the APK on a phone and go through §12's checklist; nothing Android-specific has run on a
-   device yet (the build environment had no emulator).
-2. Try a real install on Fedora (`bun tauri build`, then install the RPM) and run through the
+1. Try a real install on Fedora (`bun tauri build`, then install the RPM) and run through the
    unchecked criteria above.
-3. Piper voices (open question 3), then offline dictionaries.
-4. Windows builds; re-anchoring highlights when a book is replaced by a new edition.
-5. Optional in-app sync over WebDAV (open question 6).
-6. Finding books online and filling in book details: research, recommendations and open
+2. Piper voices (open question 3), then offline dictionaries.
+3. Windows builds; re-anchoring highlights when a book is replaced by a new edition.
+4. Sync through Google Drive, after kDrive.
+5. Finding books online and filling in book details: research, recommendations and open
    decisions are in [ONLINE.md](ONLINE.md).
 
 Known issue: when the reader closes, foliate-js's paginator can run a queued `requestAnimationFrame`
@@ -369,9 +368,8 @@ rules and session accounting; Vitest covers the UI logic. Test books come from S
    (not yet tried).
 4. ~~PDF?~~ Yes, labelled experimental (D13).
 5. ~~Android?~~ Yes, via Tauri 2 (D17–D22, §12).
-6. In-app sync over WebDAV (Nextcloud, a home server, kDrive), so phones don't need a sync app.
-   Each device writes only its own folder, so it would be "upload mine, download the others".
-   Until then: Syncthing-Fork on Android, or FolderSync for Google Drive.
+6. ~~In-app sync?~~ Yes: kDrive through its API first, Google Drive next. Each device uploads its
+   own folder and downloads the others'. A synced folder (Syncthing-Fork on Android) still works.
 
 ## 11. References
 
@@ -413,11 +411,8 @@ What's different:
 - **Selection menu.** The system's floating Copy/Share menu is emptied for book text, where
   Readlet's own bar covers it; text fields keep cut and paste (`MainActivity.kt`).
 
-Checked so far: the Rust core builds and passes clippy for `aarch64-linux-android`; the APK builds
-(debug and signed release); the UI was checked in Chromium (Android's WebView engine) at phone size
-with an Android user agent and a mocked core, for every view, sheet and bar.
-
-Not yet checked on a device (do these first):
+The signed release APK from CI is in use on a phone. Things to go through again after changes to
+the Android shell:
 
 1. First run: the access prompt, picking `Books`, scanning, covers.
 2. Reading: swipes and taps, selection by long press (no system menu over Readlet's bar), notes on
