@@ -1,7 +1,7 @@
 {
   "name": "readlet",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A calm desktop e-reader with reading stats, a highlights hub and read-aloud",
   "license": "GPL-3.0-or-later",
   "type": "module",
