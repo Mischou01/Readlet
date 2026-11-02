@@ -9,6 +9,7 @@ import {
   FootnoteHandler,
   Overlayer,
   PAGE_DRAWN,
+  PAGE_PIXEL_RATIO,
   type Book,
   type Location,
   type SearchResult,
@@ -382,6 +383,14 @@ function overlayFixedPages(view: View): (doc: Document, index: number) => void {
       // The page is paper whatever the theme, and the view's variables don't reach into its frame.
       overlayer.element.style.setProperty('--overlayer-highlight-opacity', '1')
       overlayer.element.style.setProperty('--overlayer-highlight-blend-mode', 'multiply')
+      // Highlights are drawn at client rects, which are already shrunk by the page's own scale.
+      const ratio = `var(${PAGE_PIXEL_RATIO}, 1)`
+      Object.assign(overlayer.element.style, {
+        transform: `scale(${ratio})`,
+        transformOrigin: '0 0',
+        width: `calc(100% / ${ratio})`,
+        height: `calc(100% / ${ratio})`,
+      })
       doc.body.append(overlayer.element)
       pages.set(doc, { index, overlayer })
     }

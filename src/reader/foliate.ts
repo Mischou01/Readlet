@@ -96,6 +96,9 @@ async function isPdf(file: Blob): Promise<boolean> {
 /** Fired on a PDF page's document each time pdf.js has drawn it, text layer and all. */
 export const PAGE_DRAWN = 'readlet-page-drawn'
 
+/** pdf.js shrinks a page's root by 1/devicePixelRatio; this holds the ratio it drew with. */
+export const PAGE_PIXEL_RATIO = '--readlet-pixel-ratio'
+
 type PageDraw = { doc: Document; scale: number }
 type PdfPage = { src: string; onZoom(o: PageDraw): Promise<void> }
 
@@ -124,7 +127,9 @@ function drawPdfPagesInTurn(book: Book) {
           for (const layer of next.doc.querySelectorAll('.textLayer, .annotationLayer')) {
             layer.replaceChildren()
           }
+          const ratio = devicePixelRatio
           await page.onZoom(next).catch((e) => console.warn('drawing a PDF page failed', e))
+          next.doc.documentElement.style.setProperty(PAGE_PIXEL_RATIO, String(ratio))
           next.doc.dispatchEvent(new Event(PAGE_DRAWN))
         }
         drawing.delete(o.doc)
