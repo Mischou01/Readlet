@@ -610,9 +610,11 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
       cancelled = true
     }
   }, [bookmarks, contentsOpen, ready])
-  const bookmarkFractions = useMemo(
-    () => bookmarks.flatMap((b) => (b.fraction != null ? [b.fraction] : [])),
-    [bookmarks],
+  /** The bookmarks with a known place in the book, for the progress bar. */
+  const placedBookmarks = useMemo(() => bookmarks.filter((b) => b.fraction != null), [bookmarks])
+  const bookmarkMarks = useMemo(
+    () => placedBookmarks.map((b) => ({ fraction: b.fraction!, label: b.name || 'Bookmark' })),
+    [placedBookmarks],
   )
 
   const putBookmark = (
@@ -1062,11 +1064,13 @@ export function ReaderView({ fingerprint, target, readAloud: startReadingAloud }
           minutesLeft={minutesLeft}
           sectionPages={sectionPages}
           pageLabel={location?.pageItem?.label}
-          bookmarks={bookmarkFractions}
+          bookmarks={bookmarkMarks}
           chapters={chapterMarks}
-          onSeek={(f) => {
+          onSeek={(f, bookmark) => {
             markJump()
-            seek(f)
+            const cfi = bookmark !== undefined ? placedBookmarks[bookmark]?.cfi : undefined
+            if (cfi) void handle.current?.goTo(cfi)
+            else seek(f)
           }}
         />
       )}

@@ -642,8 +642,8 @@ export function BookView(props: BookViewProps) {
     let settleSelection: ReturnType<typeof setTimeout> | undefined
     /** The text on the page showing (paginated text). */
     let pageRange: Range | null = null
-    /** Where the page showing starts (`renderer.start`), to bring it back if a selection moves it. */
-    let pageStart: number | undefined
+    /** How far the page showing is scrolled, to put it back if a selection moves it. */
+    let pageScroll: { left: number; top: number } | null = null
     const paginatedText = () => !view.isFixedLayout && !callbacks.current.layout.scrolled
     const footnotes = new FootnoteHandler()
 
@@ -796,12 +796,12 @@ export function BookView(props: BookViewProps) {
       const onSelectionChange = (e: Event) => {
         if (paginatedText()) {
           e.stopImmediatePropagation()
-          // Android scrolls a dragged selection handle into view, sliding the next page in.
-          const r = view.renderer
-          const moved =
-            pageStart !== undefined && r.start !== undefined && Math.abs(r.start - pageStart) > 1
-          if (moved && pageRange && !doc.getSelection()?.isCollapsed) {
-            void r.scrollToAnchor?.(pageRange)
+          // Android scrolls a dragged selection handle into view, sliding the next page in. It's
+          // put back directly: foliate's scrollToAnchor() would also collapse the selection.
+          const area = textAreaOf(doc)
+          if (area && pageScroll && !doc.getSelection()?.isCollapsed) {
+            if (Math.abs(area.scrollLeft - pageScroll.left) > 1) area.scrollLeft = pageScroll.left
+            if (Math.abs(area.scrollTop - pageScroll.top) > 1) area.scrollTop = pageScroll.top
           }
           // Trimming it changes it again, which comes back here.
           if (trimToPage(doc.getSelection(), pageRange)) return
@@ -989,7 +989,9 @@ export function BookView(props: BookViewProps) {
       const { reason, range } = e.detail
       lastReason = reason
       pageRange = range ?? null
-      pageStart = view.renderer.start
+      const doc = view.renderer.getContents()[0]?.doc
+      const area = doc && textAreaOf(doc)
+      pageScroll = area ? { left: area.scrollLeft, top: area.scrollTop } : null
       const match = found.current
       if (!match || refinding || reason === 'selection') return
       let onPage = false

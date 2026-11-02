@@ -291,6 +291,8 @@
   margin: 0;
   opacity: 0;
   cursor: pointer;
+  /* A drag that strays up or down stays a drag rather than becoming a scroll. */
+  touch-action: none;
 }
 
 .seek:hover {
@@ -355,6 +357,18 @@
   background: var(--ink);
   opacity: 0.55;
   pointer-events: none;
+}
+
+/* The bookmark the slider has caught on. */
+.seekMark[data-active] {
+  height: 13px;
+  background: var(--accent);
+  opacity: 1;
+}
+
+.seekPreviewBookmark {
+  font-weight: 600;
+  color: var(--accent);
 }
 
 /* The way back after a jump: in the middle of the footer's line (toasts use the space above). */
@@ -958,9 +972,9 @@
     max-width: calc(100% - 48px);
   }
 
-  /* Above the thumb, clear of the footer's line. */
+  /* Above the reading tools, which would cover it. */
   .seekPreview {
-    bottom: 40px;
+    bottom: 124px;
   }
 
   /* A taller target for the thumb, which only works while the toolbar shows. */
